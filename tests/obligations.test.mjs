@@ -298,3 +298,43 @@ test('HTTP: reject cross-origin payment, overpay and malformed body without muta
   assert.equal((await call(db,request('/api/movements','session=alice'))).body.movements.length,0);
   assert.equal((await call(db,request('/api/obligations/'+bill.obligationId,'session=alice'))).body.obligation.outstandingCents,7500);
 }));
+
+
+test('database trigger rejects associating an income or mismatched amount to a bill payment',()=>withDB(async db=>{
+  const account=await wallet(db);
+  const b=await createObligation(db,who('alice'),bill('trigger',{totalCents:cents('10')}),now);
+  const insertExpense=(direction,amount,tag)=>{
+    const id=crypto.randomUUID();
+    db.raw.prepare("INSERT INTO posted_cash_movements (owner_user_id,movement_id,creation_key,account_id,direction,amount_cents,payment_method,description,source_label,category,occurred_on,created_at) VALUES (?,?,?, ?,?,?,?, ?,NULL,NULL,?,?)")
+      .run('alice',id,key('direct-'+tag),account.accountId,direction,amount,'pix','Test expense','2026-11-10',now().toISOString());
+    return id;
+  };
+  const insertPayment=(movementId,amount,tag)=>db.raw.prepare('INSERT INTO financial_obligation_payments (owner_user_id,payment_id,creation_key,obligation_id,movement_id,amount_cents,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run('alice',crypto.randomUUID(),key('linked-'+tag),b.obligationId,movementId,amount,now().toISOString());
+  const income=insertExpense('income',500,'income');
+  assert.throws(()=>insertPayment(income,500,'income'),/PAYMENT_MOVEMENT_MISMATCH/);
+  const expense=insertExpense('expense',500,'expense');
+  assert.throws(()=>insertPayment(expense,501,'different'),/PAYMENT_MOVEMENT_MISMATCH/);
+  assert.equal((await getObligation(db,who('alice'),b.obligationId)).paidCents,0);
+}));
+
+test('database trigger refuses bypassing the service to overpay',()=>withDB(async db=>{
+  const account=await wallet(db);
+  const b=await createObligation(db,who('alice'),bill('trigger-over',{totalCents:cents('10')}),now);
+  const id=crypto.randomUUID();
+  db.raw.prepare("INSERT INTO posted_cash_movements (owner_user_id,movement_id,creation_key,account_id,direction,amount_cents,payment_method,description,source_label,category,occurred_on,created_at) VALUES (?,?,?, ?, 'expense',?, ?,?,NULL,NULL,?,?)")
+    .run('alice',id,key('raw-over-movement'),account.accountId,1001,'pix','Posted','2026-11-10',now().toISOString());
+  assert.throws(()=>db.raw.prepare('INSERT INTO financial_obligation_payments (owner_user_id,payment_id,creation_key,obligation_id,movement_id,amount_cents,created_at) VALUES (?,?,?,?,?,?,?)')
+    .run('alice',crypto.randomUUID(),key('raw-over-payment'),b.obligationId,id,1001,now().toISOString()),/PAYMENT_EXCEEDS_OBLIGATION/);
+  assert.equal((await getObligation(db,who('alice'),b.obligationId)).outstandingCents,1000);
+}));
+
+test('simultaneous same-key obligation creations return a single record',()=>withDB(async db=>{
+  const input=bill('create-race');
+  const [first,second]=await Promise.all([
+    createObligation(db,who('alice'),input,now),
+    createObligation(db,who('alice'),input,now),
+  ]);
+  assert.equal(first.obligationId,second.obligationId);
+  assert.equal((await listObligations(db,who('alice'))).length,1);
+}));
