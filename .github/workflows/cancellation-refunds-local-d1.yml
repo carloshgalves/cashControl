@@ -1,5 +1,5 @@
 name: cancellation-refunds-local-d1
-# Fourth regression: refund receipt rail explicit after adversarial review. No deployment.
+# Fifth regression: immutable historical obligations and payments. No deployment.
 on:
   push:
     branches: [feat/cancellation-refunds]
