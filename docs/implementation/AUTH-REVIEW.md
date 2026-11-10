@@ -1,6 +1,6 @@
 # Revisão adversarial — PR #31: contas, autenticação e autorização
 
-**Data:** 2026-11-10. **Estado:** revisão de código e testes de unidade/integridade locais concluídos para os componentes verificáveis. **Homologação real de Better Auth e Cloudflare D1 não executada. Não fazer merge/deploy como funcionalidade autenticada pronta.**
+**Data:** 2026-11-10. **Estado:** revisão adversarial e validação funcional real de Better Auth + Cloudflare D1 local **aprovadas em GitHub Actions**. **Sem deploy remoto; CPU do Workers Free, recuperação de conta, backup/restore e preparação de produção ainda não homologados.**
 
 ## Escopo revisado
 
@@ -22,7 +22,24 @@
 
 Após as correções acima, a revisão estática e as regressões locais não revelaram outro defeito comprovadamente corrigível dentro do núcleo testável. Isso **não** significa zero risco ou autenticação homologada.
 
-## Verificações reproduzíveis
+## Homologação adicional em GitHub Actions (2026-11-10)
+
+**Execução comprovada:** [Run #42832851510](https://github.com/carloshgalves/cashControl/actions/runs/42832851510), job `local-worker-integration`, conclusão **success**.
+
+- `npm install --no-audit --no-fund`: **66 pacotes instalados** no runner Node 22.
+- `npm run typecheck`: **PASS** no projeto completo, incluindo Better Auth, Hono e Worker.
+- `npm test`: **20 PASS, 0 FAIL**.
+- `npx wrangler d1 migrations apply DB --local`: **PASS**; migrações 0001/0002 aplicadas à instância descartável de D1 local.
+- `npx wrangler dev --local`: Worker iniciado no Workerd/Miniflare.
+- `node scripts/e2e-auth.mjs`: **AUTH_E2E_PASS** com cadastros e logins REAIS de Alice e Bob, cookies distintos, criação e consulta de conta por Alice, recusa de leitura por Bob, requisição cross-origin rejeitada, logout de Alice e revogação efetiva de seu cookie; Bob permaneceu autenticado.
+- **Finding F-07 corrigido antes da homologação:** o `better-auth-cloudflare` habilita por padrão `autoDetectIpAddress` e `geolocationTracking`, exigindo `cf` não fornecido pela integração e coletando dados desnecessários. Ambos desabilitados; o E2E real passou. A proteção por sessão e rate limiting em banco permanecem.
+- **CI:** este run foi executado; não relatar mais `CI_NOT_RUN` como estado geral. Entretanto, nenhuma pipeline de deploy/produção foi executada.
+
+**Limites dessa evidência:** os testes de integração usam **D1 local**, não D1 remoto nem o enforcement real de quotas Cloudflare Workers Free. Ainda não houve execução do fluxo de recuperação/validação de e-mail; signup foi habilitado apenas no ambiente descartável pelo `ALLOW_SIGN_UP=true`, enquanto o padrão do produto continua fechado.
+
+## Verificações anteriores (histórico — superadas parcialmente pelo run acima)
+
+
 
 - `npm test`: **20 testes aprovados, 0 falhas**, usando Node 22.16 + SQLite experimental em memória. Exercita: centavos, saldo geral/realocação, rollbacks, chaves de idempotência, concorrência modelada, usuário A/B, acesso por ID estrangeiro, sessão inválida/expirada/sujeito inconsistente (simulada), CSRF/origem, payloads e unicidade/FK no esquema de autenticação.
 - `npm run typecheck:core`: **PASS** para domínio e controlador HTTP, TypeScript 5.8.3 instalado localmente.
@@ -53,3 +70,15 @@ Após as correções acima, a revisão estática e as regressões locais não re
 
 - https://developers.cloudflare.com/workers/platform/limits/
 - https://github.com/better-auth/better-auth/issues/9649 (resolvido em maio/2026; histórico de exceder CPU, não prova de regressão atual)
+
+
+## Gate de CPU real do Workers Free — PENDENTE
+
+A Cloudflare informa limite de **10 ms de CPU por requisição** no Workers Free. O Workerd local e o tempo total da suíte de integração não provam adequação a essa cota. A medição precisa ocorrer em um **Worker de homologação implantado em uma conta Cloudflare real**, com dados fictícios, pelo painel Analytics ou logs de execução.
+
+1. Implantar apenas Worker de homologação com D1 de teste, sem usuários/dados reais e com conta controlada.
+2. Executar cadastro, login correto/incorreto, `get-session` e logout repetidos; observar CPU por invocação, p95 e eventos `exceededCpu`.
+3. Reprovar a escolha do Workers Free se ocorrerem estouros ou margens inseguras; considerar alternativa de autenticação gerenciada ou plano apropriado **sem enfraquecer o hash**.
+4. Não usar latência HTTP, média da suíte ou temporização de banco como se fossem CPU.
+
+Fonte: https://developers.cloudflare.com/workers/platform/limits/ e https://developers.cloudflare.com/workers/observability/dev-tools/cpu-usage/
