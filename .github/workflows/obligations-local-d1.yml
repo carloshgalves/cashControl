@@ -1,0 +1,52 @@
+name: obligations-local-d1-validation
+# Verification pass 4: real Workerd/D1 competing settlement requests. No deployment.
+on:
+  push:
+    branches: [feat/obligations-partial-payments]
+    paths: [.github/workflows/obligations-local-d1.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cashcontrol-obligations-local
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Domain and HTTP adversarial regression
+        run: npm test
+      - name: Prepare disposable Wrangler D1
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply local D1 migrations including 0004
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start local Hono/Better Auth Worker
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-obligations.log 2>&1 &
+          echo $! > /tmp/cashcontrol-obligations.pid
+      - name: Exercise two real sessions, partial/final settlement and rollback
+        run: node scripts/e2e-auth.mjs
+      - name: Stop Worker and clean
+        if: always()
+        run: |
+          if [ -f /tmp/cashcontrol-obligations.pid ]; then kill "$(cat /tmp/cashcontrol-obligations.pid)" 2>/dev/null || true; fi
+      - name: Explicit deployment boundary
+        if: always()
+        run: echo "NO_DEPLOY; REMOTE_D1_NOT_USED; WORKERS_FREE_CPU_NOT_MEASURED"

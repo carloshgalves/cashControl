@@ -1,6 +1,7 @@
 import { createAccount, getAccount, listAccounts, type AuthenticatedActor, type FinancialDatabase } from '../accounts/accounts.ts';
 import { parseCents } from '../../domain/money.ts';
 import { getMovement, listMovements, postMovement } from '../movements/movements.ts';
+import { createObligation, getObligation, listObligations, listObligationPayments, payObligation } from '../obligations/obligations.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -57,6 +58,86 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
+    if (method === 'GET' && path === '/api/obligations') {
+      const query = requestURL.searchParams;
+      const pagination = (name: string, fallback: number): number => {
+        const raw = query.get(name);
+        if (raw === null) return fallback;
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
+        return Number(raw);
+      };
+      return json({ obligations: await listObligations(database, actor, {
+        limit: pagination('limit', 50), offset: pagination('offset', 0),
+      }) });
+    }
+    const paymentPath = path.match(/^\/api\/obligations\/([0-9a-f-]{36})\/payments$/);
+    if (method === 'GET' && paymentPath) {
+      const obligationId = paymentPath[1]!;
+      if (!await getObligation(database, actor, obligationId)) return error(404, 'NOT_FOUND');
+      const query = requestURL.searchParams;
+      const pagination = (name: string, fallback: number): number => {
+        const raw = query.get(name);
+        if (raw === null) return fallback;
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
+        return Number(raw);
+      };
+      return json({ payments: await listObligationPayments(database, actor, obligationId, {
+        limit: pagination('limit', 50), offset: pagination('offset', 0),
+      }) });
+    }
+    if (method === 'GET' && /^\/api\/obligations\/[0-9a-f-]{36}$/.test(path)) {
+      const obligation = await getObligation(database, actor, path.slice('/api/obligations/'.length));
+      return obligation ? json({ obligation }) : error(404, 'NOT_FOUND');
+    }
+    if (method === 'POST' && path === '/api/obligations') {
+      if (!request.body) return error(400, 'INVALID_BODY');
+      const bytes = await readBounded(request, 4096);
+      if (bytes === null) return error(413, 'PAYLOAD_TOO_LARGE');
+      let raw: unknown;
+      try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch { return error(400, 'INVALID_JSON'); }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return error(400, 'INVALID_BODY');
+      const value = raw as Record<string, unknown>;
+      if (typeof value.idempotencyKey !== 'string' || typeof value.title !== 'string' ||
+          typeof value.amount !== 'string' || typeof value.dueOn !== 'string' ||
+          (value.category !== undefined && value.category !== null && typeof value.category !== 'string')) {
+        return error(400, 'INVALID_BODY');
+      }
+      let amount;
+      try { amount = parseCents(value.amount); }
+      catch { return error(400, 'INVALID_AMOUNT'); }
+      const obligation = await createObligation(database, actor, {
+        idempotencyKey: value.idempotencyKey, title: value.title,
+        category: value.category as string | null | undefined,
+        totalCents: amount, dueOn: value.dueOn,
+      });
+      return json({ obligation }, 201);
+    }
+    if (method === 'POST' && paymentPath) {
+      if (!request.body) return error(400, 'INVALID_BODY');
+      const bytes = await readBounded(request, 4096);
+      if (bytes === null) return error(413, 'PAYLOAD_TOO_LARGE');
+      let raw: unknown;
+      try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch { return error(400, 'INVALID_JSON'); }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return error(400, 'INVALID_BODY');
+      const value = raw as Record<string, unknown>;
+      if (typeof value.idempotencyKey !== 'string' || typeof value.accountId !== 'string' ||
+          typeof value.amount !== 'string' || typeof value.paidOn !== 'string' ||
+          (value.method !== 'cash' && value.method !== 'pix' &&
+           value.method !== 'debit' && value.method !== 'bank_transfer')) {
+        return error(400, 'INVALID_BODY');
+      }
+      let amount;
+      try { amount = parseCents(value.amount); }
+      catch { return error(400, 'INVALID_AMOUNT'); }
+      const payment = await payObligation(database, actor, {
+        idempotencyKey: value.idempotencyKey, obligationId: paymentPath[1]!,
+        accountId: value.accountId, amountCents: amount, method: value.method,
+        paidOn: value.paidOn,
+      });
+      return json({ payment }, 201);
+    }
     if (method === 'GET' && path === '/api/accounts') {
       return json({ accounts: await listAccounts(database, actor) });
     }

@@ -54,5 +54,18 @@ for (const path of ['/api/movements', '/api/movements/:movementId']) {
   });
 }
 
+// Upcoming bills and confirmed partial/full settlements reuse Better Auth sessions.
+for (const path of ['/api/obligations', '/api/obligations/:obligationId', '/api/obligations/:obligationId/payments']) {
+  app.all(path, (c) => {
+    const auth = createWorkerAuth(c.env);
+    return handleFinancialHttp(
+      c.req.raw,
+      c.env.DB as unknown as FinancialDatabase,
+      async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+      configuredOrigin(c.env),
+    );
+  });
+}
+
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
