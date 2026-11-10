@@ -89,6 +89,8 @@ export async function handleFinancialHttp(
       if (typeof value.idempotencyKey !== 'string' ||
           typeof value.originalMovementId !== 'string' || typeof value.accountId !== 'string' ||
           typeof value.amount !== 'string' || typeof value.refundedOn !== 'string' ||
+          (value.method !== 'cash' && value.method !== 'pix' &&
+           value.method !== 'debit' && value.method !== 'bank_transfer') ||
           (value.reason !== undefined && value.reason !== null && typeof value.reason !== 'string')) {
         return error(400, 'INVALID_BODY');
       }
@@ -98,7 +100,7 @@ export async function handleFinancialHttp(
       const refund = await refundPaidExpense(database, actor, {
         idempotencyKey: value.idempotencyKey,
         originalMovementId: value.originalMovementId,
-        accountId: value.accountId, amountCents: amount,
+        accountId: value.accountId, amountCents: amount, method: value.method,
         refundedOn: value.refundedOn, reason: value.reason as string | null | undefined,
       });
       return json({ refund }, 201);
