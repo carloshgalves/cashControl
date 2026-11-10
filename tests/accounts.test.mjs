@@ -124,6 +124,7 @@ test('account labels use parameter binding, not SQL string concatenation', async
   assert.equal((await listAccounts(db,actor('u1'))).length,1);
 }));
 
+
 test('concurrent retries commit exactly one account and one reallocation', async () => withDb(async db=>{
   const parent=await createAccount(db,actor('u1'),req(key('concurrent-source'),'G',external('200'),'general'));
   const body=req(key('concurrent-target'),'Savings',transfer('75.20',parent.accountId));
