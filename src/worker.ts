@@ -81,5 +81,20 @@ for (const path of ['/api/transfers', '/api/transfers/:transferId']) {
   });
 }
 
+// Compensating events use the same verified Better Auth session and CSRF boundary.
+for (const path of [
+  '/api/refunds', '/api/refunds/:refundId', '/api/obligations/:obligationId/cancel',
+]) {
+  app.all(path, (c) => {
+    const auth = createWorkerAuth(c.env);
+    return handleFinancialHttp(
+      c.req.raw,
+      c.env.DB as unknown as FinancialDatabase,
+      async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+      configuredOrigin(c.env),
+    );
+  });
+}
+
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
