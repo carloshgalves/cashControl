@@ -1,0 +1,45 @@
+import { Hono } from 'hono';
+import type { FinancialDatabase } from './backend/accounts/accounts.ts';
+import { handleAccountsHttp } from './backend/http/accounts-handler.ts';
+import { configuredOrigin, createWorkerAuth, type WorkerBindings } from './backend/auth/worker-auth.ts';
+
+const app = new Hono<{ Bindings: WorkerBindings }>();
+
+// Same-origin only: avoids bypassing Better Auth trustedOrigins and our own
+// strict Origin policy. We deliberately do not enable wildcard CORS.
+app.use('/api/*', async (c, next) => {
+  let origin: string;
+  try { origin = configuredOrigin(c.env); }
+  catch { return c.json({ error: 'UNAVAILABLE' }, 503, { 'cache-control': 'no-store' }); }
+  if (new URL(c.req.url).origin !== origin) {
+    return c.json({ error: 'FORBIDDEN_ORIGIN' }, 403, { 'cache-control': 'no-store' });
+  }
+  await next();
+});
+
+app.all('/api/auth/*', (c) => createWorkerAuth(c.env).handler(c.req.raw));
+
+// These are the ONLY financial endpoints. There is no unprotected wildcard.
+// Actual ownership comes from Better Auth's database-backed getSession, not
+// from x-user-id, body.ownerId, or a resource ID supplied in the URL.
+app.all('/api/accounts', async (c) => {
+  const auth = createWorkerAuth(c.env);
+  return handleAccountsHttp(
+    c.req.raw,
+    c.env.DB as unknown as FinancialDatabase,
+    async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+    configuredOrigin(c.env),
+  );
+});
+app.all('/api/accounts/:accountId', async (c) => {
+  const auth = createWorkerAuth(c.env);
+  return handleAccountsHttp(
+    c.req.raw,
+    c.env.DB as unknown as FinancialDatabase,
+    async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+    configuredOrigin(c.env),
+  );
+});
+
+app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
+export default app;
