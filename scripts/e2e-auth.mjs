@@ -254,10 +254,10 @@ async function main(){
   status(await request('/api/refunds/'+returned.data.refund.refundId,{cookie:b.cookie}),404,
     'B cannot read A reimbursement');
   assert.equal((await request('/api/refunds',{cookie:b.cookie})).data.refunds.length,0);
-  const attack=await request('/api/refunds',{method:'POST',cookie:b.cookie,body:{
+  const refundAttack=await request('/api/refunds',{method:'POST',cookie:b.cookie,body:{
     ...refundBody,idempotencyKey:'refund-'+nonce+'-foreign',
   }});
-  assert.equal(attack.status,409,'B cannot refund A expense');
+  assert.equal(refundAttack.status,409,'B cannot refund A expense');
 
   // Partial reversal of a payment reopens exactly the returned share.
   const returnedBill=await request('/api/refunds',{method:'POST',cookie:a.cookie,body:{
