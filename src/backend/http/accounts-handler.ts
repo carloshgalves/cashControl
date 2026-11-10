@@ -68,7 +68,7 @@ export async function handleFinancialHttp(
       const query = requestURL.searchParams;
       const parsePage = (raw: string | null, fallback: number): number => {
         if (raw === null) return fallback;
-        if (!/^(?:0|[1-9]\\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
         return Number(raw);
       };
       const accountId = query.get('accountId');
@@ -78,7 +78,7 @@ export async function handleFinancialHttp(
         offset: parsePage(query.get('offset'), 0),
       }) });
     }
-    if (method === 'GET' && /^\\/api\\/movements\\/[0-9a-f-]{36}$/.test(path)) {
+    if (method === 'GET' && /^\/api\/movements\/[0-9a-f-]{36}$/.test(path)) {
       const movement = await getMovement(database, actor, path.slice('/api/movements/'.length));
       return movement ? json({ movement }) : error(404, 'NOT_FOUND');
     }
