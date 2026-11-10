@@ -1,5 +1,5 @@
 name: obligations-local-d1-validation
-# Verification pass 2 after fixing zero-based JS month validation. No production deployment.
+# Verification pass 3: database-trigger invariants and concurrent-create regression. No deployment.
 on:
   push:
     branches: [feat/obligations-partial-payments]
