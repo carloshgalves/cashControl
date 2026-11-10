@@ -66,7 +66,7 @@ async function bill(db,owner='alice',amount='100.00',name='internet') {
 }
 const refund=(movementId,accountId,suffix='refund',amount='30.00',extra={})=>({
   idempotencyKey:key('refund-'+suffix),
-  originalMovementId:movementId,accountId,amountCents:cents(amount),
+  originalMovementId:movementId,accountId,amountCents:cents(amount),method:'pix',
   refundedOn:'2026-11-10',reason:'Devolução parcial',...extra,
 });
 const cancel=(obligationId,suffix='cancel',extra={})=>({
@@ -352,12 +352,13 @@ test('HTTP: authenticated refund history linked to expense; forged owner blocked
   assert.equal(e.status,201);
   const body={
     idempotencyKey:key('http-refund'),originalMovementId:e.body.movement.movementId,
-    accountId:a.accountId,amount:'20.00',refundedOn:'2026-11-10',
+    accountId:a.accountId,amount:'20.00',method:'bank_transfer',refundedOn:'2026-11-10',
     reason:'Devolvido',ownerId:'bob',
   };
   const refund=await call(db,http('/api/refunds','session=alice',body));
   assert.equal(refund.status,201);
   assert.equal(refund.body.refund.amountCents,2000);
+  assert.equal(refund.body.refund.method,'bank_transfer');
   const again=await call(db,http('/api/refunds','session=alice',body));
   assert.equal(again.body.refund.refundId,refund.body.refund.refundId);
   assert.equal((await call(db,http('/api/refunds','session=bob'))).body.refunds.length,0);
