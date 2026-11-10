@@ -206,6 +206,92 @@ async function main(){
   assert.equal((await request('/api/transfers',{cookie:a.cookie})).data.transfers.length,2);
   console.log('TRANSFERS_E2E_PASS: authenticated own transfers, conserved total, no income/expense, CSRF, tenant isolation and idempotency');
   console.log('TRANSFERS_RACE_PASS: competing concurrent D1 transfers do not overspend or create a partial leg');
+  // B5 cancellation/refund integration: use REAL Better Auth sessions and D1.
+  const unpaid=await request('/api/obligations',{method:'POST',cookie:a.cookie,body:{
+    ...obligationData,idempotencyKey:'refund-'+nonce+'-unpaid',amount:'12.00',
+  }});
+  status(unpaid,201,'create separate unpaid obligation');
+  const unpaidId=unpaid.data.obligation.obligationId;
+  const priorBalance=(await request('/api/accounts/'+id,{cookie:a.cookie})).data.account.balanceCents;
+  const cancellationBody={idempotencyKey:'refund-'+nonce+'-cancel',canceledOn:'2026-11-10',reason:'Desistência'};
+  const cancelled=await request('/api/obligations/'+unpaidId+'/cancel',{
+    method:'POST',cookie:a.cookie,body:cancellationBody,
+  });
+  status(cancelled,201,'cancel unpaid bill');
+  const canceledBill=await request('/api/obligations/'+unpaidId,{cookie:a.cookie});
+  assert.equal(canceledBill.data.obligation.state,'canceled');
+  assert.equal(canceledBill.data.obligation.outstandingCents,0);
+  assert.equal((await request('/api/accounts/'+id,{cookie:a.cookie})).data.account.balanceCents,priorBalance,
+    'unpaid cancellation must not change real cash');
+  status(await request('/api/obligations/'+unpaidId+'/cancel',{
+    method:'POST',cookie:a.cookie,body:cancellationBody,originOverride:'https://evil.invalid',
+  }),403,'cancellation CSRF prevented');
+  const foreignCancel=await request('/api/obligations/'+unpaidId+'/cancel',{
+    method:'POST',cookie:b.cookie,body:{...cancellationBody,idempotencyKey:'refund-'+nonce+'-foreign-cancel'},
+  });
+  assert.equal(foreignCancel.status,409,'B cannot cancel A bill');
+
+  const refundBody={
+    idempotencyKey:'refund-'+nonce+'-expense',
+    originalMovementId:spent.data.movement.movementId,
+    accountId:id,amount:'10.06',refundedOn:'2026-11-10',
+    reason:'Produto devolvido',ownerId:'bob',
+  };
+  const returned=await request('/api/refunds',{method:'POST',cookie:a.cookie,body:refundBody});
+  status(returned,201,'refund original expense');
+  const returnedAgain=await request('/api/refunds',{method:'POST',cookie:a.cookie,body:refundBody});
+  status(returnedAgain,201,'idempotent expense refund');
+  assert.equal(returned.data.refund.refundId,returnedAgain.data.refund.refundId);
+  assert.equal((await request('/api/accounts/'+id,{cookie:a.cookie})).data.account.balanceCents,priorBalance+1006,
+    'refund must credit actual cash once');
+  const refundHistory=await request('/api/movements',{cookie:a.cookie});
+  status(refundHistory,200,'movement history includes refund');
+  const tagged=refundHistory.data.movements.find(x=>x.movementId===returned.data.refund.refundMovementId);
+  assert.equal(tagged.eventKind,'refund','refund is not earned income');
+  assert.equal(tagged.refundOfMovementId,spent.data.movement.movementId,'refund must link original expense');
+  const refunds=await request('/api/refunds?originalMovementId='+spent.data.movement.movementId,{cookie:a.cookie});
+  assert.equal(refunds.data.refunds.length,1,'refund timeline must be linked');
+  status(await request('/api/refunds/'+returned.data.refund.refundId,{cookie:b.cookie}),404,
+    'B cannot read A reimbursement');
+  assert.equal((await request('/api/refunds',{cookie:b.cookie})).data.refunds.length,0);
+  const attack=await request('/api/refunds',{method:'POST',cookie:b.cookie,body:{
+    ...refundBody,idempotencyKey:'refund-'+nonce+'-foreign',
+  }});
+  assert.equal(attack.status,409,'B cannot refund A expense');
+
+  // Partial reversal of a payment reopens exactly the returned share.
+  const returnedBill=await request('/api/refunds',{method:'POST',cookie:a.cookie,body:{
+    ...refundBody,idempotencyKey:'refund-'+nonce+'-bill',
+    originalMovementId:paid.data.payment.movementId,amount:'10.00',
+  }});
+  status(returnedBill,201,'partial reimbursement of obligation payment');
+  const billAfterRefund=await request('/api/obligations/'+billId,{cookie:a.cookie});
+  assert.equal(billAfterRefund.data.obligation.state,'partially_paid');
+  assert.equal(billAfterRefund.data.obligation.paidCents,6500);
+  assert.equal(billAfterRefund.data.obligation.outstandingCents,1000);
+  const balanceAfterBillRefund=(await request('/api/accounts/'+id,{cookie:a.cookie})).data.account.balanceCents;
+  assert.equal(balanceAfterBillRefund,priorBalance+2006);
+
+  // Concurrent competing refunds of the same R$75 bill payment: only one R$50 wins.
+  const racePaid=(await request(racePath,{cookie:a.cookie})).data.payments[0];
+  const competing=await Promise.all([
+    request('/api/refunds',{method:'POST',cookie:a.cookie,body:{
+      ...refundBody,idempotencyKey:'refund-'+nonce+'-race-1',
+      originalMovementId:racePaid.movementId,amount:'50.00',
+    }}),
+    request('/api/refunds',{method:'POST',cookie:a.cookie,body:{
+      ...refundBody,idempotencyKey:'refund-'+nonce+'-race-2',
+      originalMovementId:racePaid.movementId,amount:'50.00',
+    }}),
+  ]);
+  assert.deepEqual(competing.map(x=>x.status).sort(),[201,409],
+    'concurrent refunds must not return more than originally paid');
+  assert.equal((await request('/api/accounts/'+id,{cookie:a.cookie})).data.account.balanceCents,
+    balanceAfterBillRefund+5000,'rejected refund created an orphan credit');
+  const raceAfterRefund=await request('/api/obligations/'+raceId,{cookie:a.cookie});
+  assert.equal(raceAfterRefund.data.obligation.outstandingCents,7500);
+  console.log('COMPENSATIONS_E2E_PASS: cancellation leaves cash unchanged, linked refund restores cash and net obligation');
+  console.log('COMPENSATIONS_RACE_PASS: concurrent reimbursements preserve original payment cap and atomicity');
   status(await request('/api/auth/sign-out',{method:'POST',cookie:a.cookie,body:{}}),200,'signout A');
   status(await request('/api/accounts',{cookie:a.cookie}),401,'A cookie revoked');
   status(await request('/api/accounts',{cookie:b.cookie}),200,'B session unaffected');
