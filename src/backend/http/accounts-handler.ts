@@ -3,6 +3,7 @@ import { parseCents } from '../../domain/money.ts';
 import { getMovement, listMovements, postMovement } from '../movements/movements.ts';
 import { createObligation, getObligation, listObligations, listObligationPayments, payObligation } from '../obligations/obligations.ts';
 import { createInternalTransfer, getInternalTransfer, listInternalTransfers } from '../transfers/transfers.ts';
+import { cancelUnpaidObligation, getExpenseRefund, listExpenseRefunds, refundPaidExpense } from '../compensations/compensations.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -59,6 +60,72 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
+    if (method === 'GET' && path === '/api/refunds') {
+      const query = requestURL.searchParams;
+      const page = (name: string, fallback: number): number => {
+        const raw = query.get(name);
+        if (raw === null) return fallback;
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
+        return Number(raw);
+      };
+      return json({ refunds: await listExpenseRefunds(database, actor, {
+        originalMovementId: query.get('originalMovementId') ?? undefined,
+        limit: page('limit', 50), offset: page('offset', 0),
+      }) });
+    }
+    if (method === 'GET' && /^\/api\/refunds\/[0-9a-f-]{36}$/.test(path)) {
+      const refund = await getExpenseRefund(database, actor, path.slice('/api/refunds/'.length));
+      return refund ? json({ refund }) : error(404, 'NOT_FOUND');
+    }
+    if (method === 'POST' && path === '/api/refunds') {
+      if (!request.body) return error(400, 'INVALID_BODY');
+      const bytes = await readBounded(request, 4096);
+      if (bytes === null) return error(413, 'PAYLOAD_TOO_LARGE');
+      let raw: unknown;
+      try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch { return error(400, 'INVALID_JSON'); }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return error(400, 'INVALID_BODY');
+      const value = raw as Record<string, unknown>;
+      if (typeof value.idempotencyKey !== 'string' ||
+          typeof value.originalMovementId !== 'string' || typeof value.accountId !== 'string' ||
+          typeof value.amount !== 'string' || typeof value.refundedOn !== 'string' ||
+          (value.reason !== undefined && value.reason !== null && typeof value.reason !== 'string')) {
+        return error(400, 'INVALID_BODY');
+      }
+      let amount;
+      try { amount = parseCents(value.amount); }
+      catch { return error(400, 'INVALID_AMOUNT'); }
+      const refund = await refundPaidExpense(database, actor, {
+        idempotencyKey: value.idempotencyKey,
+        originalMovementId: value.originalMovementId,
+        accountId: value.accountId, amountCents: amount,
+        refundedOn: value.refundedOn, reason: value.reason as string | null | undefined,
+      });
+      return json({ refund }, 201);
+    }
+    const cancellationPath = path.match(/^\/api\/obligations\/([0-9a-f-]{36})\/cancel$/);
+    if (method === 'POST' && cancellationPath) {
+      if (!request.body) return error(400, 'INVALID_BODY');
+      const bytes = await readBounded(request, 4096);
+      if (bytes === null) return error(413, 'PAYLOAD_TOO_LARGE');
+      let raw: unknown;
+      try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch { return error(400, 'INVALID_JSON'); }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return error(400, 'INVALID_BODY');
+      const value = raw as Record<string, unknown>;
+      if (typeof value.idempotencyKey !== 'string' ||
+          typeof value.canceledOn !== 'string' ||
+          (value.reason !== undefined && value.reason !== null && typeof value.reason !== 'string')) {
+        return error(400, 'INVALID_BODY');
+      }
+      const cancellation = await cancelUnpaidObligation(database, actor, {
+        obligationId: cancellationPath[1]!,
+        idempotencyKey: value.idempotencyKey,
+        canceledOn: value.canceledOn,
+        reason: value.reason as string | null | undefined,
+      });
+      return json({ cancellation }, 201);
+    }
     if (method === 'GET' && path === '/api/transfers') {
       const query = requestURL.searchParams;
       const parsePage = (name: string, fallback: number): number => {
