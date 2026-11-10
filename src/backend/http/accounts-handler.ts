@@ -4,6 +4,7 @@ import { getMovement, listMovements, postMovement } from '../movements/movements
 import { createObligation, getObligation, listObligations, listObligationPayments, payObligation } from '../obligations/obligations.ts';
 import { createInternalTransfer, getInternalTransfer, listInternalTransfers } from '../transfers/transfers.ts';
 import { cancelUnpaidObligation, getExpenseRefund, listExpenseRefunds, refundPaidExpense } from '../compensations/compensations.ts';
+import { getDashboard } from '../dashboard/dashboard.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -60,6 +61,16 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
+    if (method === 'GET' && path === '/api/dashboard') {
+      const from = requestURL.searchParams.get('from');
+      const to = requestURL.searchParams.get('to');
+      if (from === null || to === null ||
+          requestURL.searchParams.getAll('from').length !== 1 ||
+          requestURL.searchParams.getAll('to').length !== 1) {
+        return error(400, 'INVALID_PERIOD');
+      }
+      return json({ dashboard: await getDashboard(database, actor, { from, to }) });
+    }
     if (method === 'GET' && path === '/api/refunds') {
       const query = requestURL.searchParams;
       const page = (name: string, fallback: number): number => {
