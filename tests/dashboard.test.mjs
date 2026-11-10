@@ -47,12 +47,12 @@ class Database {
 const cents=parseCents;
 const actor=userId=>({userId});
 const clock=()=>new Date('2026-11-10T19:00:00.000Z');
-const key=label=>'dashboard-fixture-'+label;
+const key=label=>'dashboard-fixture-'+label.replace(/[^A-Za-z0-9_-]/g,'-');
 const p=(from='2026-11-01',to='2026-11-30')=>({from,to});
 async function withDb(fn){const db=new Database();try{return await fn(db);}finally{db.close();}}
 async function wallet(db,owner='alice',label='Main',amount='100.00'){
   return createAccount(db,actor(owner),{
-    idempotencyKey:key('wallet-'+owner+'-'+label),name:label,kind:'general',
+    idempotencyKey:key('wallet-'+owner+'-'+label),name:label,kind:'bank',
     funding:{mode:'external',cents:cents(amount)},
   },clock);
 }
