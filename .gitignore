@@ -9,3 +9,6 @@ coverage/
 *.sqlite3
 *.db
 .DS_Store
+wrangler.toml
+.dev.vars
+.dev.vars.*
