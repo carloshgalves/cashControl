@@ -96,5 +96,16 @@ for (const path of [
   });
 }
 
+// Read-only consolidated dashboard: same verified Better Auth session boundary.
+app.all('/api/dashboard', (c) => {
+  const auth = createWorkerAuth(c.env);
+  return handleFinancialHttp(
+    c.req.raw,
+    c.env.DB as unknown as FinancialDatabase,
+    async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+    configuredOrigin(c.env),
+  );
+});
+
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
