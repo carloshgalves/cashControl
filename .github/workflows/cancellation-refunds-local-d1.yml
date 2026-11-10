@@ -1,0 +1,55 @@
+name: cancellation-refunds-local-d1
+# Fifth regression: immutable historical obligations and payments. No deployment.
+on:
+  push:
+    branches: [feat/cancellation-refunds]
+    paths: [.github/workflows/cancellation-refunds-local-d1.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cashcontrol-refunds-local
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Full TypeScript typecheck
+        run: npm run typecheck
+      - name: Check E2E script syntax before starting Worker
+        run: node --check scripts/e2e-auth.mjs
+      - name: All domain and HTTP SQLite tests
+        run: npm test
+      - name: Prepare disposable local D1 and auth
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply migrations 0001 through 0006 to D1 local
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start real Workerd and Better Auth with local D1
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-refunds.log 2>&1 &
+          echo $! > /tmp/cashcontrol-refunds.pid
+      - name: Two real sessions, cancellation/refund E2E and concurrent refund cap
+        run: node scripts/e2e-auth.mjs
+      - name: Stop test Worker
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/cashcontrol-refunds.pid ]; then kill "$(cat /tmp/cashcontrol-refunds.pid)" 2>/dev/null || true; fi
+      - name: Explicit no-deploy boundary
+        if: always()
+        run: echo "NO_DEPLOY; NO_REMOTE_D1; WORKERS_FREE_CPU_NOT_MEASURED"

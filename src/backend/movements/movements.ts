@@ -25,6 +25,9 @@ export interface MovementView {
   sourceLabel: string | null;
   category: string | null;
   createdAt: string;
+  eventKind: 'ordinary' | 'refund';
+  refundOfMovementId: string | null;
+  refundedCents: Cents;
 }
 interface MovementRow {
   movement_id: string;
@@ -38,7 +41,15 @@ interface MovementRow {
   source_label: string | null;
   category: string | null;
   created_at: string;
+  refund_of_movement_id: string | null;
+  refunded_cents: number;
 }
+
+const MOVEMENT_SELECT = 'SELECT m.*, r.original_movement_id AS refund_of_movement_id, ' +
+  'COALESCE((SELECT SUM(rr.amount_cents) FROM cash_refunds rr ' +
+  'WHERE rr.owner_user_id = m.owner_user_id AND rr.original_movement_id = m.movement_id), 0) ' +
+  'AS refunded_cents FROM posted_cash_movements m LEFT JOIN cash_refunds r ' +
+  'ON r.owner_user_id = m.owner_user_id AND r.refund_movement_id = m.movement_id';
 
 function ownerOf(actor: AuthenticatedActor): string {
   if (!actor || typeof actor.userId !== 'string' || !actor.userId.trim() || actor.userId.length > 128) {
@@ -87,6 +98,7 @@ function validate(input: PostMovementRequest): { description: string; sourceLabe
 }
 function toView(r: MovementRow): MovementView {
   assertCents(r.amount_cents);
+  assertCents(r.refunded_cents);
   return {
     movementId: r.movement_id,
     accountId: r.account_id,
@@ -98,12 +110,15 @@ function toView(r: MovementRow): MovementView {
     sourceLabel: r.source_label,
     category: r.category,
     createdAt: r.created_at,
+    eventKind: r.refund_of_movement_id === null ? 'ordinary' : 'refund',
+    refundOfMovementId: r.refund_of_movement_id,
+    refundedCents: r.refunded_cents,
   };
 }
 export async function getMovement(db: FinancialDatabase, actor: AuthenticatedActor, id: string): Promise<MovementView | null> {
   const owner = ownerOf(actor);
-  const row = await db.prepare(`SELECT * FROM posted_cash_movements
-    WHERE owner_user_id = ? AND movement_id = ?`)
+  const row = await db.prepare(MOVEMENT_SELECT +
+    ' WHERE m.owner_user_id = ? AND m.movement_id = ?')
     .bind(owner, id).first<MovementRow>();
   return row ? toView(row) : null;
 }
@@ -113,10 +128,10 @@ export async function listMovements(db: FinancialDatabase, actor: AuthenticatedA
   const { accountId, limit = 50, offset = 0 } = filter;
   if (accountId !== undefined && (typeof accountId !== 'string' || !/^[0-9a-f-]{36}$/.test(accountId))) throw new TypeError('Invalid filter');
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 1_000_000) throw new TypeError('Invalid pagination');
-  const rows = await db.prepare(`SELECT * FROM posted_cash_movements
-    WHERE owner_user_id = ? AND (? IS NULL OR account_id = ?)
-    ORDER BY occurred_on DESC, created_at DESC, movement_id DESC
-    LIMIT ? OFFSET ?`).bind(owner, accountId ?? null, accountId ?? null, limit, offset).all<MovementRow>();
+  const rows = await db.prepare(MOVEMENT_SELECT +
+    ' WHERE m.owner_user_id = ? AND (? IS NULL OR m.account_id = ?) ' +
+    'ORDER BY m.occurred_on DESC, m.created_at DESC, m.movement_id DESC LIMIT ? OFFSET ?')
+    .bind(owner, accountId ?? null, accountId ?? null, limit, offset).all<MovementRow>();
   return rows.results.map(toView);
 }
 export async function postMovement(
@@ -126,8 +141,8 @@ export async function postMovement(
   const owner = ownerOf(actor);
   const normalized = validate(input);
   const replay = async (): Promise<MovementView | null> => {
-    const row = await db.prepare(`SELECT * FROM posted_cash_movements
-      WHERE owner_user_id = ? AND creation_key = ?`)
+    const row = await db.prepare(MOVEMENT_SELECT +
+      ' WHERE m.owner_user_id = ? AND m.creation_key = ?')
       .bind(owner, input.idempotencyKey).first<MovementRow>();
     if (!row) return null;
     if (row.account_id !== input.accountId || row.direction !== input.direction ||

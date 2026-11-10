@@ -2,7 +2,7 @@ import { assertCents, type Cents } from '../../domain/money.ts';
 import type { AuthenticatedActor, FinancialDatabase } from '../accounts/accounts.ts';
 import type { PaymentMethod } from '../movements/movements.ts';
 
-export type ObligationState = 'open' | 'partially_paid' | 'paid';
+export type ObligationState = 'open' | 'partially_paid' | 'paid' | 'canceled';
 export interface CreateObligationInput {
   idempotencyKey: string;
   title: string;
@@ -20,6 +20,9 @@ export interface ObligationView {
   dueOn: string;
   state: ObligationState;
   createdAt: string;
+  canceledAt: string | null;
+  canceledOn: string | null;
+  cancellationReason: string | null;
 }
 export interface PayObligationInput {
   idempotencyKey: string;
@@ -44,6 +47,8 @@ interface ObligationRow {
   obligation_id: string; title: string; category: string | null;
   creation_key: string; total_cents: number; paid_cents: number;
   outstanding_cents: number; due_on: string; created_at: string;
+  canceled_at: string | null; canceled_on: string | null;
+  cancellation_reason: string | null;
 }
 interface PaymentRow {
   payment_id: string; creation_key: string; obligation_id: string;
@@ -93,15 +98,20 @@ function obligationView(row: ObligationRow): ObligationView {
   assertCents(row.total_cents);
   assertCents(row.paid_cents);
   assertCents(row.outstanding_cents);
-  if (row.paid_cents + row.outstanding_cents !== row.total_cents || row.total_cents === 0) {
+  if (row.total_cents === 0 ||
+      (row.canceled_at !== null
+        ? row.outstanding_cents !== 0 || row.paid_cents !== 0
+        : row.paid_cents + row.outstanding_cents !== row.total_cents)) {
     throw new RangeError('Invalid obligation balance');
   }
-  const state: ObligationState = row.outstanding_cents === 0
-    ? 'paid' : row.paid_cents > 0 ? 'partially_paid' : 'open';
+  const state: ObligationState = row.canceled_at !== null ? 'canceled'
+    : row.outstanding_cents === 0 ? 'paid'
+    : row.paid_cents > 0 ? 'partially_paid' : 'open';
   return { obligationId: row.obligation_id, title: row.title, category: row.category,
     totalCents: row.total_cents, paidCents: row.paid_cents,
-    outstandingCents: row.outstanding_cents, dueOn: row.due_on,
-    state, createdAt: row.created_at };
+    outstandingCents: row.outstanding_cents, dueOn: row.due_on, state,
+    createdAt: row.created_at, canceledAt: row.canceled_at,
+    canceledOn: row.canceled_on, cancellationReason: row.cancellation_reason };
 }
 function paymentView(row: PaymentRow): ObligationPaymentView {
   assertCents(row.amount_cents);
