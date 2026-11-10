@@ -17,7 +17,10 @@ class Database {
     this.sql.exec('PRAGMA foreign_keys=ON');
     this.sql.exec(readFileSync(new URL('../migrations/0001_financial_accounts.sql',import.meta.url),'utf8'));
     this.sql.exec(readFileSync(new URL('../migrations/0003_cash_movements.sql',import.meta.url),'utf8'));
+    this.sql.exec(readFileSync(new URL('../migrations/0002_better_auth.sql',import.meta.url),'utf8'));
+    this.sql.exec(readFileSync(new URL('../migrations/0004_financial_obligations.sql',import.meta.url),'utf8'));
     this.sql.exec(readFileSync(new URL('../migrations/0005_internal_transfers.sql',import.meta.url),'utf8'));
+    this.sql.exec(readFileSync(new URL('../migrations/0006_cancellations_refunds.sql',import.meta.url),'utf8'));
     this.queue=Promise.resolve();
   }
   prepare(sql){return new Statement(this.sql,sql);}
