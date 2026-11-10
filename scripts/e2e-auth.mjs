@@ -295,8 +295,10 @@ async function main(){
   // Dashboard C1: verify aggregation against real ledger endpoints on local D1.
   const periodDashboard='/api/dashboard?from=2026-11-10&to=2026-11-10';
   status(await request(periodDashboard),401,'dashboard rejects anonymous request');
-  const dashA=await request(periodDashboard+'&ownerId=bob',{cookie:a.cookie});
-  status(dashA,200,'A dashboard with ignored ownerId query');
+  const forged=await request(periodDashboard+'&ownerId=bob',{cookie:a.cookie});
+  assert.equal(forged.status,400,'unsupported ownerId filter must not be silently ignored');
+  const dashA=await request(periodDashboard,{cookie:a.cookie});
+  status(dashA,200,'A dashboard under its own verified session');
   const dashB=await request(periodDashboard,{cookie:b.cookie});
   status(dashB,200,'B independent dashboard');
   const historical=await request('/api/dashboard?from=2026-10-01&to=2026-10-31',{cookie:a.cookie});
