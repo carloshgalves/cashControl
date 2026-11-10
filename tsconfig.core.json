@@ -3,7 +3,8 @@
   "include": [
     "src/domain/**/*.ts",
     "src/backend/accounts/**/*.ts",
-    "src/backend/http/**/*.ts"
+    "src/backend/http/**/*.ts",
+    "src/backend/movements/**/*.ts"
   ],
   "exclude": [
     "src/backend/auth/**/*.ts",
