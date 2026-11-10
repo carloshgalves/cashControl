@@ -387,3 +387,26 @@ test('HTTP: cancel unpaid bill without any cash event; reject cross-origin and d
   assert.equal(state.outstandingCents,0);
   assert.deepEqual((await call(db,http('/api/movements','session=alice'))).body.movements,[]);
 }));
+
+
+test('original obligations and their paid events are immutable against direct SQL rewrites',()=>withDb(async db=>{
+  const a=await wallet(db);
+  const b=await bill(db,'alice','50','immutable-bill');
+  const p=await payObligation(db,act('alice'),{
+    idempotencyKey:key('immutable-payment'),obligationId:b.obligationId,
+    accountId:a.accountId,amountCents:cents('20'),
+    method:'pix',paidOn:'2026-11-09',
+  },clock);
+  assert.throws(()=>db.raw.prepare('UPDATE financial_obligations SET total_cents=? WHERE obligation_id=?')
+    .run(1,b.obligationId),/OBLIGATION_IMMUTABLE/);
+  assert.throws(()=>db.raw.prepare('DELETE FROM financial_obligations WHERE obligation_id=?')
+    .run(b.obligationId),/OBLIGATION_IMMUTABLE/);
+  assert.throws(()=>db.raw.prepare('UPDATE financial_obligation_payments SET amount_cents=? WHERE payment_id=?')
+    .run(1,p.paymentId),/PAYMENT_IMMUTABLE/);
+  assert.throws(()=>db.raw.prepare('DELETE FROM financial_obligation_payments WHERE payment_id=?')
+    .run(p.paymentId),/PAYMENT_IMMUTABLE/);
+  const current=await getObligation(db,act('alice'),b.obligationId);
+  assert.equal(current.paidCents,2000);
+  assert.equal(current.outstandingCents,3000);
+  assert.equal(await balance(db,'alice',a.accountId),28000);
+}));
