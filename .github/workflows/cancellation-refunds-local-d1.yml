@@ -1,5 +1,5 @@
 name: cancellation-refunds-local-d1
-# Second local regression: replay classification corrected. No production secrets.
+# Third regression: E2E syntax safety and full Workerd integration. No production secrets.
 on:
   push:
     branches: [feat/cancellation-refunds]
@@ -24,6 +24,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Full TypeScript typecheck
         run: npm run typecheck
+      - name: Check E2E script syntax before starting Worker
+        run: node --check scripts/e2e-auth.mjs
       - name: All domain and HTTP SQLite tests
         run: npm test
       - name: Prepare disposable local D1 and auth
