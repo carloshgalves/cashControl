@@ -1,6 +1,7 @@
 import { assertCents, type Cents } from '../../domain/money.ts';
 import type { AuthenticatedActor, FinancialDatabase } from '../accounts/accounts.ts';
 import { getMovement } from '../movements/movements.ts';
+import type { PaymentMethod } from '../movements/movements.ts';
 
 export interface CancelObligationInput {
   idempotencyKey: string;
@@ -20,6 +21,7 @@ export interface RefundExpenseInput {
   originalMovementId: string;
   accountId: string;
   amountCents: Cents;
+  method: PaymentMethod;
   refundedOn: string;
   reason?: string | null;
 }
@@ -30,6 +32,7 @@ export interface ExpenseRefundView {
   accountId: string;
   obligationId: string | null;
   amountCents: Cents;
+  method: PaymentMethod;
   refundedOn: string;
   reason: string | null;
   createdAt: string;
@@ -55,13 +58,14 @@ interface RefundRow {
   account_id: string;
   obligation_id: string | null;
   amount_cents: number;
+  payment_method: PaymentMethod;
   refunded_on: string;
   reason: string | null;
   created_at: string;
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const KEY = /^[A-Za-z0-9_-]{12,128}$/;
-const REFUND_SQL = 'SELECT r.*, m.account_id, p.obligation_id ' +
+const REFUND_SQL = 'SELECT r.*, m.account_id, m.payment_method, p.obligation_id ' +
   'FROM cash_refunds r ' +
   'JOIN posted_cash_movements m ON m.owner_user_id = r.owner_user_id AND m.movement_id = r.refund_movement_id ' +
   'LEFT JOIN financial_obligation_payments p ON p.owner_user_id = r.owner_user_id ' +
@@ -126,6 +130,7 @@ function refundView(row: RefundRow): ExpenseRefundView {
     accountId: row.account_id,
     obligationId: row.obligation_id,
     amountCents: row.amount_cents,
+    method: row.payment_method,
     refundedOn: row.refunded_on,
     reason: row.reason,
     createdAt: row.created_at,
@@ -213,6 +218,9 @@ export async function refundPaidExpense(
   checkId(input.accountId);
   assertCents(input.amountCents);
   if (input.amountCents === 0) throw new RangeError('Refund must be positive');
+  if (!['cash', 'pix', 'debit', 'bank_transfer'].includes(input.method)) {
+    throw new TypeError('Invalid refund receipt method');
+  }
   checkCivilDate(input.refundedOn);
   const reason = normalizeReason(input.reason);
   const replay = async (): Promise<ExpenseRefundView | null> => {
@@ -222,7 +230,8 @@ export async function refundPaidExpense(
     if (!row) return null;
     if (row.original_movement_id !== input.originalMovementId ||
         row.account_id !== input.accountId || row.amount_cents !== input.amountCents ||
-        row.refunded_on !== input.refundedOn || row.reason !== reason) {
+        row.payment_method !== input.method || row.refunded_on !== input.refundedOn ||
+        row.reason !== reason) {
       throw new Error('Idempotency conflict');
     }
     return refundView(row);
@@ -246,7 +255,7 @@ export async function refundPaidExpense(
         'payment_method, description, source_label, category, occurred_on, created_at) ' +
         "VALUES (?, ?, ?, ?, 'income', ?, ?, ?, NULL, ?, ?, ?)",
       ).bind(owner, movementId, creditKey, input.accountId, input.amountCents,
-        original.method, ('Reembolso: ' + original.description).slice(0, 120),
+        input.method, ('Reembolso: ' + original.description).slice(0, 120),
         original.category, input.refundedOn, now),
       db.prepare(
         'INSERT INTO cash_refunds ' +
