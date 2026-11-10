@@ -1,6 +1,6 @@
 # Primeiro incremento de backend — contas e carteiras
 
-Este documento acompanha uma implementação **parcial** do ticket [#11](https://github.com/carloshgalves/cashControl/issues/11). **Ainda não há interface nem implantação D1 de produção.** O backend agora inclui rotas HTTP protegidas e integração configurada com Better Auth/Hono, mas a biblioteca e o Worker ainda não foram executados neste ambiente; autenticação real permanece pendente de homologação. Não tratar como funcionalidade disponível a usuários finais.
+Este documento acompanha uma implementação **parcial** do ticket [#11](https://github.com/carloshgalves/cashControl/issues/11). **Ainda não há interface nem implantação D1 de produção.** O backend inclui rotas HTTP protegidas e integração funcional com Better Auth/Hono: o teste E2E real de autenticação e isolamento passou em Wrangler + D1 local no GitHub Actions. Não houve deploy nem medição de CPU real no Workers Free. Não tratar como funcionalidade disponível a usuários finais.
 
 ## O que já funciona (serviço backend, não publicado)
 
@@ -30,13 +30,13 @@ Este documento acompanha uma implementação **parcial** do ticket [#11](https:/
 - `src/backend/auth/worker-auth.ts` configura Better Auth, senha, sessão e rate limit persistido no D1. Cadastro público desabilitado por padrão; liberar apenas de forma controlada após revisão de e-mail/recuperação.
 - `src/backend/http/accounts-handler.ts` constrói a identidade a partir do resultado verificado de `auth.api.getSession`, jamais de dados fornecidos pelo navegador; rejeita sessões inválidas, origens cruzadas e recursos de outro titular.
 - `migrations/0002_better_auth.sql` adiciona tabelas de autenticação; verificar sua equivalência ao gerador da versão pinada **antes** de qualquer deploy.
-- **Testes locais:** `npm test` 20 passed, 0 failed; `npm run typecheck:core` passou. `npm run typecheck` integral, `npm install`, Worker/D1 local e login real **não foram executados** por falta de downloads de dependências no executor.
+- **Verificação em runner GitHub Actions:** `npm install` instalou 66 pacotes, `npm run typecheck` completo passou, `npm test` 20/20 passou, migrações no D1 local passaram e `node scripts/e2e-auth.mjs` passou com autenticação/isolamento/logout reais. [Execução #42832851510](https://github.com/carloshgalves/cashControl/actions/runs/42832851510).
 - Revisão de segurança, achados corrigidos e gates pendentes: [AUTH-REVIEW.md](AUTH-REVIEW.md).
 
 ## Próximos bloqueios
 
-1. [#9](https://github.com/carloshgalves/cashControl/issues/9): validar a integração de autenticação real, migrações da biblioteca, cookies, logout e sessão com Better Auth em runtime.
-2. [#10](https://github.com/carloshgalves/cashControl/issues/10): gate HTTP de autorização já codificado e testado com sessões simuladas; faltam testes A/B end-to-end com biblioteca real e D1.
-3. [#11](https://github.com/carloshgalves/cashControl/issues/11): validação do adaptador D1 via Wrangler e interface de onboarding que deverá ser submetida à aprovação visual antes da implementação.
+1. [#9](https://github.com/carloshgalves/cashControl/issues/9): sessão, cadastro, login e logout reais foram validados localmente em Wrangler/D1; ainda faltam política de verificação de e-mail, recuperação de conta e medição de CPU no Workers Free hospedado.
+2. [#10](https://github.com/carloshgalves/cashControl/issues/10): gate de autorização e testes A/B com cookies reais passaram no Worker/D1 local; não há produção ou exportações para homologar nesta etapa.
+3. [#11](https://github.com/carloshgalves/cashControl/issues/11): migrações D1 locais e criação de contas com sessão autenticada passaram; interface de onboarding ainda depende de sua aprovação visual antes da implementação.
 
 Não mesclar este incremento como conclusão de #9/#10/#11 nem disponibilizar operações financeiras em produção antes da validação real desses gates.
