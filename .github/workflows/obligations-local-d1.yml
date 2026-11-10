@@ -1,5 +1,5 @@
 name: obligations-local-d1-validation
-# Runs once on creation of this workflow, or manually. No production deployment.
+# Verification pass 2 after fixing zero-based JS month validation. No production deployment.
 on:
   push:
     branches: [feat/obligations-partial-payments]
