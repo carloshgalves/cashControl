@@ -1,5 +1,5 @@
 name: cancellation-refunds-local-d1
-# One-shot local regression; no production infrastructure or secrets.
+# Second local regression: replay classification corrected. No production secrets.
 on:
   push:
     branches: [feat/cancellation-refunds]
