@@ -76,7 +76,7 @@ function civilDate(value: string): void {
     throw new TypeError('Invalid business date');
   }
   const actual = new Date(Date.UTC(y, m - 1, d));
-  if (actual.getUTCFullYear() !== y || actual.getUTCMonth() !== m || actual.getUTCDate() !== d) {
+  if (actual.getUTCFullYear() !== y || actual.getUTCMonth() + 1 !== m || actual.getUTCDate() !== d) {
     throw new TypeError('Invalid business date');
   }
 }
