@@ -170,3 +170,27 @@ BEFORE DELETE ON obligation_cancellations
 BEGIN
   SELECT RAISE(ABORT, 'CANCELLATION_IMMUTABLE');
 END;
+
+
+-- Preserve both the original bill and its historical confirmed settlements.
+-- Later renegotiations may supersede them by new linked events, not rewrites.
+CREATE TRIGGER no_update_obligation_payments
+BEFORE UPDATE ON financial_obligation_payments
+BEGIN
+  SELECT RAISE(ABORT, 'PAYMENT_IMMUTABLE');
+END;
+CREATE TRIGGER no_delete_obligation_payments
+BEFORE DELETE ON financial_obligation_payments
+BEGIN
+  SELECT RAISE(ABORT, 'PAYMENT_IMMUTABLE');
+END;
+CREATE TRIGGER no_update_obligations
+BEFORE UPDATE ON financial_obligations
+BEGIN
+  SELECT RAISE(ABORT, 'OBLIGATION_IMMUTABLE');
+END;
+CREATE TRIGGER no_delete_obligations
+BEFORE DELETE ON financial_obligations
+BEGIN
+  SELECT RAISE(ABORT, 'OBLIGATION_IMMUTABLE');
+END;
