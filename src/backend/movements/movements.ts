@@ -141,8 +141,8 @@ export async function postMovement(
   const owner = ownerOf(actor);
   const normalized = validate(input);
   const replay = async (): Promise<MovementView | null> => {
-    const row = await db.prepare(`SELECT * FROM posted_cash_movements
-      WHERE owner_user_id = ? AND creation_key = ?`)
+    const row = await db.prepare(MOVEMENT_SELECT +
+      ' WHERE m.owner_user_id = ? AND m.creation_key = ?')
       .bind(owner, input.idempotencyKey).first<MovementRow>();
     if (!row) return null;
     if (row.account_id !== input.accountId || row.direction !== input.direction ||
