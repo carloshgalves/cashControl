@@ -1,0 +1,14 @@
+{
+  "name": "cashcontrol",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=22.16.0" },
+  "scripts": {
+    "test": "node --experimental-strip-types --experimental-sqlite --test tests/*.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
