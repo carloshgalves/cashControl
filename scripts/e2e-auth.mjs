@@ -75,6 +75,49 @@ async function main(){
   }});
   assert.equal(foreignWrite.status,409,'B must not post to A account');
   status(await request('/api/movements',{method:'POST',cookie:a.cookie,body:incomeBody,originOverride:'https://evil.invalid'}),403,'cross-origin cash posting');
+  const obligationData={
+    idempotencyKey:'bill-'+nonce+'-internet',title:'Internet',
+    amount:'75.00',dueOn:'2026-11-25',category:'Internet',ownerId:'bob',
+  };
+  const newBill=await request('/api/obligations',{method:'POST',cookie:a.cookie,body:obligationData});
+  status(newBill,201,'A creates future obligation');
+  const billId=newBill.data.obligation.obligationId;
+  assert.equal(newBill.data.obligation.outstandingCents,7500);
+  assert.equal(newBill.data.obligation.paidCents,0);
+  assert.equal(newBill.data.obligation.state,'open');
+  const beforePayment=await request('/api/accounts/'+id,{cookie:a.cookie});
+  assert.equal(beforePayment.data.account.balanceCents,15090,'Creating a bill must not reduce bank cash');
+  status(await request('/api/obligations/'+billId,{cookie:b.cookie}),404,'B cannot read A bill');
+  const part={idempotencyKey:'bill-payment-'+nonce+'-part',accountId:id,amount:'25.50',method:'pix',paidOn:'2026-11-10'};
+  const paid=await request('/api/obligations/'+billId+'/payments',{method:'POST',cookie:a.cookie,body:part});
+  status(paid,201,'A makes partial payment');
+  const retried=await request('/api/obligations/'+billId+'/payments',{method:'POST',cookie:a.cookie,body:part});
+  status(retried,201,'A payment replay');
+  assert.equal(paid.data.payment.paymentId,retried.data.payment.paymentId,'Duplicate financial payment');
+  const partial=await request('/api/obligations/'+billId,{cookie:a.cookie});
+  assert.equal(partial.data.obligation.state,'partially_paid');
+  assert.equal(partial.data.obligation.outstandingCents,4950);
+  const balancePart=await request('/api/accounts/'+id,{cookie:a.cookie});
+  assert.equal(balancePart.data.account.balanceCents,12540);
+  const notAuthorized=await request('/api/obligations/'+billId+'/payments',{method:'POST',cookie:b.cookie,body:part});
+  assert.equal(notAuthorized.status,409,'B must not pay A bill');
+  status(await request('/api/obligations/'+billId+'/payments',{cookie:b.cookie}),404,'B cannot inspect A payments');
+  const overpay=await request('/api/obligations/'+billId+'/payments',{method:'POST',cookie:a.cookie,body:{
+    ...part,idempotencyKey:'bill-payment-'+nonce+'-over',amount:'49.51',
+  }});
+  assert.equal(overpay.status,409,'Overpayment should be rejected');
+  const second=await request('/api/obligations/'+billId+'/payments',{method:'POST',cookie:a.cookie,body:{
+    ...part,idempotencyKey:'bill-payment-'+nonce+'-final',amount:'49.50',method:'debit',
+  }});
+  status(second,201,'A pays remainder');
+  const fully=await request('/api/obligations/'+billId,{cookie:a.cookie});
+  assert.equal(fully.data.obligation.state,'paid');
+  assert.equal(fully.data.obligation.outstandingCents,0);
+  const after=await request('/api/accounts/'+id,{cookie:a.cookie});
+  assert.equal(after.data.account.balanceCents,7590,'Bill settlement debited twice or not enough');
+  const movements=await request('/api/movements',{cookie:a.cookie});
+  assert.equal(movements.data.movements.length,4,'Exactly two original and two payment movements expected');
+  console.log('OBLIGATIONS_E2E_PASS: real Better Auth sessions, no upfront cash debit, partial/final payment, tenant isolation, rollback and idempotency');
   status(await request('/api/auth/sign-out',{method:'POST',cookie:a.cookie,body:{}}),200,'signout A');
   status(await request('/api/accounts',{cookie:a.cookie}),401,'A cookie revoked');
   status(await request('/api/accounts',{cookie:b.cookie}),200,'B session unaffected');
