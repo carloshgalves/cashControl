@@ -234,7 +234,7 @@ async function main(){
   const refundBody={
     idempotencyKey:'refund-'+nonce+'-expense',
     originalMovementId:spent.data.movement.movementId,
-    accountId:id,amount:'10.06',refundedOn:'2026-11-10',
+    accountId:id,amount:'10.06',method:'pix',refundedOn:'2026-11-10',
     reason:'Produto devolvido',ownerId:'bob',
   };
   const returned=await request('/api/refunds',{method:'POST',cookie:a.cookie,body:refundBody});
