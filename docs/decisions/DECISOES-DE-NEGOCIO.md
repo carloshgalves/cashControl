@@ -2,7 +2,7 @@
 
 > **Natureza:** decisões de produto e domínio financeiro, não ADRs de arquitetura técnica.
 >
-> **Situação:** DEC-001 a DEC-013 aprovadas em conversa de descoberta de produto até 2026-11-10.
+> **Situação:** DEC-001 a DEC-014 aprovadas em conversa de descoberta de produto até 2026-11-10.
 >
 > **Fase do projeto:** concepção; este documento **não** autoriza iniciar código nem substitui especificações detalhadas, critérios de aceite, testes ou decisões de arquitetura.
 
@@ -23,6 +23,7 @@
 4. Evitar **dupla contabilização** de transferências próprias, pagamento de fatura, deduções na folha, reserva convertida em compra e renegociação de dívida.
 5. Preservar o histórico financeiro necessário à rastreabilidade; correções, pagamentos, estornos e alterações recorrentes não devem reescrever o passado de forma enganosa.
 6. Manter a experiência utilizável tanto por quem quer registrar só entradas e saídas quanto por quem deseja vínculos e detalhamentos.
+7. Garantir isolamento por usuário em consultas, alterações, dashboard, relatórios e exportações; compartilhamento não é implícito.
 
 ---
 
@@ -218,6 +219,23 @@
 
 ---
 
+## DEC-014 — Multiusuário isolado e possibilidade de compartilhamento familiar no futuro
+
+**Estado:** Aprovada — opção B para a versão inicial. Compartilhamento familiar é possibilidade futura, **não** requisito do MVP.
+
+**Decisão:** O cashControl atenderá múltiplos usuários com perfis e dados financeiros próprios, rigorosamente isolados. Cada usuário gerencia apenas suas finanças. O produto poderá evoluir para compartilhamento voluntário de espaços financeiros entre familiares ou pessoas convidadas, mediante permissões que exigirão decisão posterior.
+
+**Comportamentos aprovados:**
+- Contas, carteiras, cartões, faturas, trabalhos, fontes de renda, receitas, despesas, dívidas, valores a receber, intenções, reservas, relatórios e projeções pertencem ao respectivo usuário.
+- Dashboard, linha do tempo, pesquisas, alterações e exportações não podem expor ou misturar dados de outros usuários.
+- A identidade de um recurso informada pelo cliente não deve, por si, autorizar acesso; a futura especificação deverá prever verificações de autorização e testes de isolamento entre usuários.
+- Não existe compartilhamento automático, nem acesso familiar implícito, na primeira entrega.
+- A possibilidade futura de convites, permissões familiares ou espaços compartilhados não antecipa a escolha do modelo de papéis nem autoriza a implementação de compartilhamento agora.
+
+**A detalhar:** autenticação, criação e recuperação de contas, sessões, proteção de dados, exclusão e recuperação, critérios/testes de autorização e eventual migração de recursos individuais para espaços compartilhados. O mecanismo técnico permanece em aberto.
+
+---
+
 ## Necessidades iniciais do produto (explicitadas na conversa)
 
 - Dashboard de entradas, saídas, saldo, obrigações e perspectivas futuras.
@@ -229,14 +247,14 @@
 
 ## Pendências deliberadamente NÃO decididas
 
-1. Arquitetura, frameworks, hospedagem, autenticação, criptografia, backup, política de retenção e segregação de dados financeiros.
+1. Arquitetura, frameworks, hospedagem, autenticação, criptografia, backup, retenção e mecanismo técnico para garantir o isolamento financeiro definido na DEC-014.
 2. Definição exata do MVP, ordem de entregas e plano de testes.
 3. Especificação contábil completa do livro de eventos e dos cálculos para todas as modalidades de pagamento, cancelamento e estorno.
 4. Política de exclusão versus arquivamento com implicação sobre trilha histórica e consistência.
 5. Detalhes de projeção estatística de renda variável, limiares de confiança e margem mínima de segurança para alertas.
 6. Comportamento avançado de cartões, detalhamento de financiamentos e importação/integração bancária; nenhuma integração automática foi aprovada.
 7. Interface final, fluxos de acessibilidade, filtros de relatório e formatos detalhados de exportação.
-8. Alertas fora da aplicação, permissões de compartilhamento e uso multiusuário.
+8. Alertas fora da aplicação, política de acesso e futuras permissões de compartilhamento familiar; o isolamento multiusuário já está aprovado.
 
 ## Próxima etapa
 
