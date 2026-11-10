@@ -288,7 +288,10 @@ test('HTTP dashboard validates period, owner session, no-store and cross-user pr
   assert.equal((await call(db,http('/api/dashboard?from=2026-11-01','session=alice'))).status,400);
   assert.equal((await call(db,http('/api/dashboard?from=2026-11-01&to=2026-02-30','session=alice'))).status,400);
   assert.equal((await call(db,http('/api/dashboard?from=2026-11-01&from=2026-10-01&to=2026-11-30','session=alice'))).status,400);
-  const alice=await call(db,http(path+'&ownerId=bob','session=alice'));
+  assert.equal((await call(db,http(path+'&ownerId=bob','session=alice'))).status,400);
+  assert.equal((await call(db,http(path+'&accountId=any','session=alice'))).status,400);
+  assert.equal((await call(db,http(path+'&category=Compras','session=alice'))).status,400);
+  const alice=await call(db,http(path,'session=alice'));
   assert.equal(alice.status,200);
   assert.equal(alice.cache,'no-store');
   assert.equal(alice.body.dashboard.balances.totalCents,13132);
