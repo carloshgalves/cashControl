@@ -1,5 +1,5 @@
 name: dashboard-local-d1
-# Second regression after correcting dashboard fixture keys and account kinds; no deploy.
+# Third regression: unsupported dashboard filters explicitly rejected; no deploy.
 on:
   push:
     branches: [feat/dashboard-read-model]
