@@ -35,6 +35,33 @@ CREATE TABLE financial_obligation_payments (
   FOREIGN KEY (owner_user_id, movement_id)
     REFERENCES posted_cash_movements(owner_user_id, movement_id) ON DELETE RESTRICT
 );
+-- Defense in depth: even a future code path cannot attach an arbitrary income,
+-- different amount or different owner's movement as settlement of a payable.
+-- The service's conditional INSERT + D1 batch still provides atomic rollback.
+CREATE TRIGGER obligation_payment_invariants
+BEFORE INSERT ON financial_obligation_payments
+BEGIN
+  SELECT RAISE(ABORT, 'PAYMENT_MOVEMENT_MISMATCH')
+  WHERE NOT EXISTS (
+    SELECT 1 FROM posted_cash_movements m
+    WHERE m.owner_user_id = NEW.owner_user_id
+      AND m.movement_id = NEW.movement_id
+      AND m.direction = 'expense'
+      AND m.amount_cents = NEW.amount_cents
+  );
+  SELECT RAISE(ABORT, 'PAYMENT_EXCEEDS_OBLIGATION')
+  WHERE NEW.amount_cents > (
+    SELECT o.total_cents - COALESCE((
+      SELECT SUM(p.amount_cents) FROM financial_obligation_payments p
+      WHERE p.owner_user_id = NEW.owner_user_id
+        AND p.obligation_id = NEW.obligation_id
+    ), 0)
+    FROM financial_obligations o
+    WHERE o.owner_user_id = NEW.owner_user_id
+      AND o.obligation_id = NEW.obligation_id
+  );
+END;
+
 CREATE INDEX obligation_payments_due_idx
   ON financial_obligation_payments(owner_user_id, obligation_id, created_at, payment_id);
 
