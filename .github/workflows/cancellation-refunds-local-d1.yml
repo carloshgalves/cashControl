@@ -1,5 +1,5 @@
 name: cancellation-refunds-local-d1
-# Third regression: E2E syntax safety and full Workerd integration. No production secrets.
+# Fourth regression: refund receipt rail explicit after adversarial review. No deployment.
 on:
   push:
     branches: [feat/cancellation-refunds]
