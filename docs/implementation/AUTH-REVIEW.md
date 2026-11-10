@@ -72,6 +72,16 @@ Após as correções acima, a revisão estática e as regressões locais não re
 - https://github.com/better-auth/better-auth/issues/9649 (resolvido em maio/2026; histórico de exceder CPU, não prova de regressão atual)
 
 
+## Finding adicional e revisão final de dependências — 2026-11-10
+
+**F-08 (consistência de versões):** o primeiro lockfile transitivo resolveu `@better-auth/core` e `@better-auth/drizzle-adapter` em 1.7.19, enquanto o pacote principal estava em 1.7.18. Para reduzir riscos de incompatibilidade entre pacotes da mesma família, adicionamos overrides exatos para 1.7.18 e regeneramos o lockfile em ambiente com rede.
+
+**Evidência de correção:** [Run #42834462040](https://github.com/carloshgalves/cashControl/actions/runs/42834462040), **SUCCESS**, usando `npm ci` com lockfile corrigido (66 pacotes), `npm run typecheck` PASS, `npm test` 20/20 e `AUTH_E2E_PASS` após as migrações D1 locais. Pacotes `better-auth`, `@better-auth/core` e `@better-auth/drizzle-adapter` resolvidos exatamente em 1.7.18.
+
+O workflow temporário com permissão de escrita usado exclusivamente para versionar o lockfile foi removido em seguida. O workflow normal é de leitura e só roda em alterações intencionais do seu YAML ou disparo manual.
+
+**Resultado da revisão no escopo exercitado:** nenhum finding adicional reprodutível após alinhamento e regressão. O gate de CPU hospedado e itens de prontidão produtiva descritos abaixo permanecem abertos; `D1 local passou` não equivale a `SaaS pronto`.
+
 ## Gate de CPU real do Workers Free — PENDENTE
 
 A Cloudflare informa limite de **10 ms de CPU por requisição** no Workers Free. O Workerd local e o tempo total da suíte de integração não provam adequação a essa cota. A medição precisa ocorrer em um **Worker de homologação implantado em uma conta Cloudflare real**, com dados fictícios, pelo painel Analytics ou logs de execução.
