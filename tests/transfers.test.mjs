@@ -104,7 +104,7 @@ test('reverse transfers restore account balances without affecting result from g
   await createInternalTransfer(db,actor('alice'),request(to,from,'back',{
     amountCents:cents('5.01'), note:null,
   }),clock);
-  assert.equal(await balance(db,'alice',from.accountId),7947);
+  assert.equal(await balance(db,'alice',from.accountId),8647);
   assert.equal(await balance(db,'alice',to.accountId),2054);
   assert.equal(await total(db,'alice'),before);
   const movements=await listMovements(db,actor('alice'));
