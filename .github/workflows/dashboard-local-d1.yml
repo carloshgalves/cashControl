@@ -1,5 +1,5 @@
 name: dashboard-local-d1
-# Third regression: unsupported dashboard filters explicitly rejected; no deploy.
+# Fourth regression: TypeScript-compatible unsupported filter validation; no deploy.
 on:
   push:
     branches: [feat/dashboard-read-model]
