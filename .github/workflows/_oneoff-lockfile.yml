@@ -1,0 +1,37 @@
+name: oneoff-commit-resolved-lockfile
+# One-off workflow: commit only the package-lock resolved by verified local D1 test.
+on:
+  push:
+    branches: [feat/backend-account-domain-initial]
+    paths: ['.github/workflows/_oneoff-lockfile.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install exact root requirements and generate lockfile
+        run: npm install --no-audit --no-fund --package-lock-only
+      - name: Verify lockfile resolves without modifications
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+      - name: Commit reproducible lockfile to draft PR only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "build: lock verified Better Auth, Hono and Wrangler dependencies"
+            git push origin HEAD:feat/backend-account-domain-initial
+          fi
