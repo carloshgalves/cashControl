@@ -1,5 +1,5 @@
 name: dashboard-local-d1
-# One-shot local regression, no deploy and no remote Cloudflare account.
+# Second regression after correcting dashboard fixture keys and account kinds; no deploy.
 on:
   push:
     branches: [feat/dashboard-read-model]
