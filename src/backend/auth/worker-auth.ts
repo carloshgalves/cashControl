@@ -28,7 +28,13 @@ export function configuredOrigin(env: WorkerBindings): string {
 export function createWorkerAuth(env: WorkerBindings) {
   const origin = configuredOrigin(env);
   return betterAuth({
-    ...withCloudflare({ d1Native: env.DB }, {
+    ...withCloudflare({
+      d1Native: env.DB,
+      // Default Cloudflare plugin settings require request.cf and collect
+      // geolocation. Neither is needed for this financial application.
+      autoDetectIpAddress: false,
+      geolocationTracking: false,
+    }, {
       baseURL: origin,
       secret: env.BETTER_AUTH_SECRET,
       trustedOrigins: [origin],
