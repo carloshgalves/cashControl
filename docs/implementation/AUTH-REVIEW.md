@@ -18,6 +18,7 @@
 | F-03 | Média | Erros SQL/constraint e payloads irrestritos poderiam vazar dados internos ou consumir recursos indevidos | Respostas genéricas sem SQL, leitura de corpo com limite de 4 KiB, parsing/validação rígidos; testes de corpo grande, inválido, saldo insuficiente e conta de outro titular |
 | F-04 | Alta | Limite de tentativas em memória é insuficiente num runtime serverless | Configuração do Better Auth com rate limit persistido no banco e migração `rateLimit`; **precisa validação operacional real antes do deploy** |
 | F-05 | Média | Cadastro público livre e ausência de verificação de e-mail poderiam permitir abertura abusiva ou identificação falsa | `ALLOW_SIGN_UP` desabilitado por padrão, senhas mínimas de 12 caracteres e `autoSignIn: false`. **Não abrir cadastro público antes de validar política de verificação/convites e recuperação de conta.** |
+| F-06 | Alta (risco de disponibilidade) | Workers Free possui 10 ms de CPU por request e versões anteriores de Better Auth com scrypt em JS excediam o limite ao criar/autenticar senha | **Bloqueio de implantação, não correção criptográfica:** inspecionar o bundle da versão pinada e medir signup/login em Workers Free real. A resolução de empacotamento de maio/2026 precisa ser conferida na combinação efetiva de dependências; se ainda exceder 10 ms, optar por um provedor de identidade externo/OAuth ou infraestrutura com cota adequada, sem enfraquecer o hash. |
 
 Após as correções acima, a revisão estática e as regressões locais não revelaram outro defeito comprovadamente corrigível dentro do núcleo testável. Isso **não** significa zero risco ou autenticação homologada.
 
@@ -36,9 +37,10 @@ Após as correções acima, a revisão estática e as regressões locais não re
 2. Executar `npm run typecheck` completo, build e testar Worker/Hono no `wrangler dev --local`.
 3. Comparar `migrations/0002_better_auth.sql` com schema gerado pela versão pinada; executar migrações em **D1 local** e numa base descartável de homologação. Não assumir equivalência só pelo SQLite.
 4. Provar signup controlado, login, sessão válida, expiração, logout/revogação e erro de credenciais (preferencialmente e-mail alternativo) em testes de integração com Better Auth **real**.
-5. Executar dois usuários A/B no Worker real: GET list/detail, POST com ID alheio, POST cross-origin, SQL injection, chaves de idempotência simultâneas, falhas de rede e validade de sessão.
-6. Definir verificação de e-mail, recuperação de acesso, procedimento independente de backup e restauração testada, antes de beta público.
-7. A PR permanece Draft, sem frontend: apresentar propostas de telas para aprovação antes de iniciar qualquer UI.
+5. Medir CPU real do fluxo de criação de conta e login no **Workers Free**; não sacrificar custos da função de hash. Verificar resolver do bundle e eventos `exceededCpu`.
+6. Executar dois usuários A/B no Worker real: GET list/detail, POST com ID alheio, POST cross-origin, SQL injection, chaves de idempotência simultâneas, falhas de rede e validade de sessão.
+7. Definir verificação de e-mail, recuperação de acesso, procedimento independente de backup e restauração testada, antes de beta público.
+8. A PR permanece Draft, sem frontend: apresentar propostas de telas para aprovação antes de iniciar qualquer UI.
 
 ## Referências consultadas
 
@@ -48,3 +50,6 @@ Após as correções acima, a revisão estática e as regressões locais não re
 - https://better-auth.com/docs/concepts/rate-limit
 - https://developers.cloudflare.com/d1/worker-api/d1-database/
 - https://better-auth.com/blog/security-release-2026-11-03
+
+- https://developers.cloudflare.com/workers/platform/limits/
+- https://github.com/better-auth/better-auth/issues/9649 (resolvido em maio/2026; histórico de exceder CPU, não prova de regressão atual)
