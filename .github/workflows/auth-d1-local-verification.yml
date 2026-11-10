@@ -28,6 +28,13 @@ jobs:
           node-version: '22'
       - name: Install pinned top-level dependencies
         run: npm install --no-audit --no-fund
+      - name: Preserve exact resolved dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolved-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
       - name: Typecheck entire Worker
         run: npm run typecheck
       - name: Unit and SQLite migration tests
