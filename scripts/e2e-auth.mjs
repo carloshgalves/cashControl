@@ -117,6 +117,29 @@ async function main(){
   assert.equal(after.data.account.balanceCents,7590,'Bill settlement debited twice or not enough');
   const movements=await request('/api/movements',{cookie:a.cookie});
   assert.equal(movements.data.movements.length,4,'Exactly two original and two payment movements expected');
+  // Real Workerd/D1 race: two distinct 75.00 payments against 100.00 due.
+  const raceBill=await request('/api/obligations',{method:'POST',cookie:a.cookie,body:{
+    ...obligationData,idempotencyKey:'bill-'+nonce+'-race',amount:'100.00',
+  }});
+  status(raceBill,201,'race bill created');
+  const raceId=raceBill.data.obligation.obligationId;
+  const racePath='/api/obligations/'+raceId+'/payments';
+  const attempts=await Promise.all([
+    request(racePath,{method:'POST',cookie:a.cookie,body:{
+      ...part,idempotencyKey:'bill-'+nonce+'-race-a',amount:'75.00',
+    }}),
+    request(racePath,{method:'POST',cookie:a.cookie,body:{
+      ...part,idempotencyKey:'bill-'+nonce+'-race-b',amount:'75.00',
+    }}),
+  ]);
+  assert.deepEqual(attempts.map(x=>x.status).sort(),[201,409],'Distinct concurrent payments cannot overpay');
+  const raceState=await request('/api/obligations/'+raceId,{cookie:a.cookie});
+  assert.equal(raceState.data.obligation.outstandingCents,2500,'Race changed obligation total');
+  assert.equal((await request('/api/accounts/'+id,{cookie:a.cookie})).data.account.balanceCents,90,
+    'Rejected concurrent payment must not create an orphan expense');
+  const racePayments=await request(racePath,{cookie:a.cookie});
+  assert.equal(racePayments.data.payments.length,1,'Only one competing payment may commit');
+  console.log('OBLIGATIONS_RACE_PASS: real concurrent D1 batches reject the competing overpayment with no orphan expense');
   console.log('OBLIGATIONS_E2E_PASS: real Better Auth sessions, no upfront cash debit, partial/final payment, tenant isolation, rollback and idempotency');
   status(await request('/api/auth/sign-out',{method:'POST',cookie:a.cookie,body:{}}),200,'signout A');
   status(await request('/api/accounts',{cookie:a.cookie}),401,'A cookie revoked');
