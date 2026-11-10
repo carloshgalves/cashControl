@@ -22,5 +22,9 @@
     "better-auth": "1.7.18",
     "better-auth-cloudflare": "0.4.1",
     "hono": "4.13.17"
+  },
+  "overrides": {
+    "@better-auth/core": "1.7.18",
+    "@better-auth/drizzle-adapter": "1.7.18"
   }
 }
