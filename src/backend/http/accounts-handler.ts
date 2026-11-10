@@ -62,6 +62,11 @@ export async function handleFinancialHttp(
   try {
     const path = requestURL.pathname;
     if (method === 'GET' && path === '/api/dashboard') {
+      // Never silently ignore unsupported filters: a caller could otherwise
+      // mistake an all-account total for a per-account or per-category total.
+      for (const name of requestURL.searchParams.keys()) {
+        if (name !== 'from' && name !== 'to') return error(400, 'INVALID_FILTER');
+      }
       const from = requestURL.searchParams.get('from');
       const to = requestURL.searchParams.get('to');
       if (from === null || to === null ||
