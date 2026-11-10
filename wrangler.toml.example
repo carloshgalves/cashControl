@@ -1,0 +1,17 @@
+name = "cashcontrol-dev"
+main = "src/worker.ts"
+compatibility_date = "2026-11-10"
+compatibility_flags = ["nodejs_compat"]
+
+# Copy to wrangler.toml, set the ID from an actual D1 database, then use
+# wrangler secret put BETTER_AUTH_SECRET for production. Never commit secrets.
+[[d1_databases]]
+binding = "DB"
+database_name = "cashcontrol-dev"
+database_id = "REPLACE_WITH_REAL_D1_ID"
+migrations_dir = "migrations"
+
+# Use .dev.vars for local values (ignored by Git).
+# BETTER_AUTH_URL=http://localhost:8787
+# BETTER_AUTH_SECRET=<32+ cryptographically random characters>
+# ALLOW_SIGN_UP=true (only during controlled registration)
