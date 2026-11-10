@@ -1,0 +1,52 @@
+name: internal-transfers-local-d1
+# Disposable verification: intentionally no deploy and no access to production D1.
+on:
+  push:
+    branches: [feat/internal-transfers]
+    paths: [.github/workflows/internal-transfers-local-d1.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cashcontrol-internal-transfers-local
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install from committed lockfile
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript complete
+        run: npm run typecheck
+      - name: Domain and HTTP regression
+        run: npm test
+      - name: Configure disposable D1 and test-only auth
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Migrate D1 locally through migration 0005
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start local Workerd / Better Auth
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-transfers.log 2>&1 &
+          echo $! > /tmp/cashcontrol-transfers.pid
+      - name: Real session E2E and transfer overdraw race
+        run: node scripts/e2e-auth.mjs
+      - name: Stop local Worker
+        if: always()
+        run: |
+          if [ -f /tmp/cashcontrol-transfers.pid ]; then kill "$(cat /tmp/cashcontrol-transfers.pid)" 2>/dev/null || true; fi
+      - name: State security and deploy boundary
+        if: always()
+        run: echo "NO_DEPLOY; NO_REMOTE_D1; WORKERS_FREE_CPU_NOT_MEASURED"

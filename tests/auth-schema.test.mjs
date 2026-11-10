@@ -12,6 +12,7 @@ test('auth and finance D1 migrations create constrained auth tables',()=>{
     db.exec(migration('0001_financial_accounts.sql'));
     db.exec(migration('0002_better_auth.sql'));
     db.exec(migration('0003_cash_movements.sql'));
+    db.exec(migration('0005_internal_transfers.sql'));
     const tables=db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(r=>r.name);
     for(const name of ['user','session','account','verification','rateLimit','financial_accounts','initial_allocations'])assert(tables.includes(name),name);
     db.prepare('INSERT INTO "user" (id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,?,?,?)')

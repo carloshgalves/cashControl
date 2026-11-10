@@ -141,6 +141,71 @@ async function main(){
   assert.equal(racePayments.data.payments.length,1,'Only one competing payment may commit');
   console.log('OBLIGATIONS_RACE_PASS: real concurrent D1 batches reject the competing overpayment with no orphan expense');
   console.log('OBLIGATIONS_E2E_PASS: real Better Auth sessions, no upfront cash debit, partial/final payment, tenant isolation, rollback and idempotency');
+  // Transfer regression on real Better Auth + local D1 (no external API/provider).
+  const bank=await request('/api/accounts',{method:'POST',cookie:a.cookie,body:{
+    idempotencyKey:'internal-'+nonce+'-source',name:'Banco',
+    kind:'bank',funding:{mode:'external',amount:'100.00'},
+  }});
+  status(bank,201,'A opens transfer source');
+  const cash=await request('/api/accounts',{method:'POST',cookie:a.cookie,body:{
+    idempotencyKey:'internal-'+nonce+'-target',name:'Espécie',
+    kind:'cash',funding:{mode:'external',amount:'0.00'},
+  }});
+  status(cash,201,'A opens transfer target');
+  const sourceId=bank.data.account.accountId,targetId=cash.data.account.accountId;
+  const beforeTransfers=await request('/api/movements',{cookie:a.cookie});
+  status(beforeTransfers,200,'income/expense history before transfers');
+  const baseMovements=beforeTransfers.data.movements.length;
+  const transferData={
+    idempotencyKey:'internal-'+nonce+'-first',
+    sourceAccountId:sourceId,targetAccountId:targetId,
+    amount:'35.60',transferredOn:'2026-11-10',
+    note:'Retirada para dinheiro',ownerId:'bob',
+  };
+  const transferred=await request('/api/transfers',{method:'POST',cookie:a.cookie,body:transferData});
+  status(transferred,201,'A creates own transfer');
+  const transferRetry=await request('/api/transfers',{method:'POST',cookie:a.cookie,body:transferData});
+  status(transferRetry,201,'retry is idempotent');
+  assert.equal(transferred.data.transfer.transferId,transferRetry.data.transfer.transferId,'duplicate transfer created');
+  assert.equal((await request('/api/accounts/'+sourceId,{cookie:a.cookie})).data.account.balanceCents,6440);
+  assert.equal((await request('/api/accounts/'+targetId,{cookie:a.cookie})).data.account.balanceCents,3560);
+  assert.equal((await request('/api/movements',{cookie:a.cookie})).data.movements.length,baseMovements,
+    'transfer must not become income or expense');
+  const filtered=await request('/api/transfers?accountId='+targetId,{cookie:a.cookie});
+  status(filtered,200,'transfer filtered by destination');
+  assert.equal(filtered.data.transfers.length,1);
+  status(await request('/api/transfers/'+transferred.data.transfer.transferId,{cookie:b.cookie}),404,
+    'B must not access A internal transfer');
+  assert.equal((await request('/api/transfers',{cookie:b.cookie})).data.transfers.length,0);
+  status(await request('/api/transfers',{method:'POST',cookie:a.cookie,body:transferData,
+    originOverride:'https://evil.invalid'}),403,'cross-origin transfer');
+  const bobBank=await request('/api/accounts',{method:'POST',cookie:b.cookie,body:{
+    idempotencyKey:'internal-'+nonce+'-bob',name:'Conta B',
+    kind:'bank',funding:{mode:'external',amount:'0'},
+  }});
+  status(bobBank,201,'B opens own account');
+  const attack=await request('/api/transfers',{method:'POST',cookie:a.cookie,body:{
+    ...transferData,idempotencyKey:'internal-'+nonce+'-foreign',
+    targetAccountId:bobBank.data.account.accountId,
+  }});
+  assert.equal(attack.status,409,'A must not transfer to B account');
+  const competitor=await Promise.all([
+    request('/api/transfers',{method:'POST',cookie:a.cookie,body:{
+      ...transferData,idempotencyKey:'internal-'+nonce+'-race-a',amount:'50.00',
+    }}),
+    request('/api/transfers',{method:'POST',cookie:a.cookie,body:{
+      ...transferData,idempotencyKey:'internal-'+nonce+'-race-b',amount:'50.00',
+    }}),
+  ]);
+  assert.deepEqual(competitor.map(x=>x.status).sort(),[201,409],
+    'two simultaneous transfers cannot spend the same source balance');
+  assert.equal((await request('/api/accounts/'+sourceId,{cookie:a.cookie})).data.account.balanceCents,1440);
+  assert.equal((await request('/api/accounts/'+targetId,{cookie:a.cookie})).data.account.balanceCents,8560);
+  assert.equal((await request('/api/movements',{cookie:a.cookie})).data.movements.length,baseMovements,
+    'concurrent transfer must not affect income/expense result');
+  assert.equal((await request('/api/transfers',{cookie:a.cookie})).data.transfers.length,2);
+  console.log('TRANSFERS_E2E_PASS: authenticated own transfers, conserved total, no income/expense, CSRF, tenant isolation and idempotency');
+  console.log('TRANSFERS_RACE_PASS: competing concurrent D1 transfers do not overspend or create a partial leg');
   status(await request('/api/auth/sign-out',{method:'POST',cookie:a.cookie,body:{}}),200,'signout A');
   status(await request('/api/accounts',{cookie:a.cookie}),401,'A cookie revoked');
   status(await request('/api/accounts',{cookie:b.cookie}),200,'B session unaffected');

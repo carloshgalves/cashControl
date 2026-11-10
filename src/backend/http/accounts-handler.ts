@@ -2,6 +2,7 @@ import { createAccount, getAccount, listAccounts, type AuthenticatedActor, type 
 import { parseCents } from '../../domain/money.ts';
 import { getMovement, listMovements, postMovement } from '../movements/movements.ts';
 import { createObligation, getObligation, listObligations, listObligationPayments, payObligation } from '../obligations/obligations.ts';
+import { createInternalTransfer, getInternalTransfer, listInternalTransfers } from '../transfers/transfers.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -58,6 +59,52 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
+    if (method === 'GET' && path === '/api/transfers') {
+      const query = requestURL.searchParams;
+      const parsePage = (name: string, fallback: number): number => {
+        const value = query.get(name);
+        if (value === null) return fallback;
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(value)) throw new TypeError('Invalid pagination');
+        return Number(value);
+      };
+      return json({ transfers: await listInternalTransfers(database, actor, {
+        accountId: query.get('accountId') ?? undefined,
+        limit: parsePage('limit', 50),
+        offset: parsePage('offset', 0),
+      }) });
+    }
+    if (method === 'GET' && /^\/api\/transfers\/[0-9a-f-]{36}$/.test(path)) {
+      const transfer = await getInternalTransfer(database, actor, path.slice('/api/transfers/'.length));
+      return transfer ? json({ transfer }) : error(404, 'NOT_FOUND');
+    }
+    if (method === 'POST' && path === '/api/transfers') {
+      if (!request.body) return error(400, 'INVALID_BODY');
+      const bytes = await readBounded(request, 4096);
+      if (bytes === null) return error(413, 'PAYLOAD_TOO_LARGE');
+      let raw: unknown;
+      try { raw = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+      catch { return error(400, 'INVALID_JSON'); }
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return error(400, 'INVALID_BODY');
+      const value = raw as Record<string, unknown>;
+      if (typeof value.idempotencyKey !== 'string' ||
+          typeof value.sourceAccountId !== 'string' || typeof value.targetAccountId !== 'string' ||
+          typeof value.amount !== 'string' || typeof value.transferredOn !== 'string' ||
+          (value.note !== undefined && value.note !== null && typeof value.note !== 'string')) {
+        return error(400, 'INVALID_BODY');
+      }
+      let amount;
+      try { amount = parseCents(value.amount); }
+      catch { return error(400, 'INVALID_AMOUNT'); }
+      const transfer = await createInternalTransfer(database, actor, {
+        idempotencyKey: value.idempotencyKey,
+        sourceAccountId: value.sourceAccountId,
+        targetAccountId: value.targetAccountId,
+        amountCents: amount,
+        transferredOn: value.transferredOn,
+        note: value.note as string | null | undefined,
+      });
+      return json({ transfer }, 201);
+    }
     if (method === 'GET' && path === '/api/obligations') {
       const query = requestURL.searchParams;
       const pagination = (name: string, fallback: number): number => {

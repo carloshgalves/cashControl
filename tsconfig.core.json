@@ -4,7 +4,8 @@
     "src/domain/**/*.ts",
     "src/backend/accounts/**/*.ts",
     "src/backend/http/**/*.ts",
-    "src/backend/movements/**/*.ts"
+    "src/backend/movements/**/*.ts",
+    "src/backend/transfers/**/*.ts"
   ],
   "exclude": [
     "src/backend/auth/**/*.ts",

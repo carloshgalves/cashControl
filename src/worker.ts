@@ -67,5 +67,19 @@ for (const path of ['/api/obligations', '/api/obligations/:obligationId', '/api/
   });
 }
 
+// Internal transfers are one atomic event across two accounts of the same user.
+// The session, CSRF and owner checks are shared with the existing financial API.
+for (const path of ['/api/transfers', '/api/transfers/:transferId']) {
+  app.all(path, (c) => {
+    const auth = createWorkerAuth(c.env);
+    return handleFinancialHttp(
+      c.req.raw,
+      c.env.DB as unknown as FinancialDatabase,
+      async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+      configuredOrigin(c.env),
+    );
+  });
+}
+
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
