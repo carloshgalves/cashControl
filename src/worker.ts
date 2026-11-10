@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { FinancialDatabase } from './backend/accounts/accounts.ts';
-import { handleAccountsHttp } from './backend/http/accounts-handler.ts';
+import { handleFinancialHttp } from './backend/http/accounts-handler.ts';
 import { configuredOrigin, createWorkerAuth, type WorkerBindings } from './backend/auth/worker-auth.ts';
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
@@ -24,7 +24,7 @@ app.all('/api/auth/*', (c) => createWorkerAuth(c.env).handler(c.req.raw));
 // from x-user-id, body.ownerId, or a resource ID supplied in the URL.
 app.all('/api/accounts', async (c) => {
   const auth = createWorkerAuth(c.env);
-  return handleAccountsHttp(
+  return handleFinancialHttp(
     c.req.raw,
     c.env.DB as unknown as FinancialDatabase,
     async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
@@ -33,13 +33,26 @@ app.all('/api/accounts', async (c) => {
 });
 app.all('/api/accounts/:accountId', async (c) => {
   const auth = createWorkerAuth(c.env);
-  return handleAccountsHttp(
+  return handleFinancialHttp(
     c.req.raw,
     c.env.DB as unknown as FinancialDatabase,
     async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
     configuredOrigin(c.env),
   );
 });
+
+// Use the same verified-session boundary as the account endpoints.
+for (const path of ['/api/movements', '/api/movements/:movementId']) {
+  app.all(path, (c) => {
+    const auth = createWorkerAuth(c.env);
+    return handleFinancialHttp(
+      c.req.raw,
+      c.env.DB as unknown as FinancialDatabase,
+      async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+      configuredOrigin(c.env),
+    );
+  });
+}
 
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
