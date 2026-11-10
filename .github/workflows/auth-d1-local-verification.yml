@@ -1,0 +1,74 @@
+name: auth-d1-local-verification
+# One-shot when this workflow is added; subsequent pushes do not consume CI.
+# Re-run manually with workflow_dispatch after changes.
+on:
+  push:
+    branches: [feat/backend-account-domain-initial]
+    paths:
+      - '.github/workflows/auth-d1-local-verification.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cashcontrol-auth-d1-local
+  cancel-in-progress: true
+
+jobs:
+  local-worker-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout draft PR branch
+        uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned top-level dependencies
+        run: npm install --no-audit --no-fund
+      - name: Preserve exact resolved dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolved-package-lock
+          path: package-lock.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Typecheck entire Worker
+        run: npm run typecheck
+      - name: Unit and SQLite migration tests
+        run: npm test
+      - name: Prepare disposable D1 configuration
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply versioned migrations to local Cloudflare D1
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start local Worker
+        shell: bash
+        run: |
+          (npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-worker.log 2>&1 & echo $! > /tmp/cashcontrol-worker.pid)
+      - name: Exercise real Better Auth registration, login, isolation and logout
+        run: node scripts/e2e-auth.mjs
+      - name: Diagnose failed startup without exposing secrets
+        if: failure()
+        shell: bash
+        run: |
+          echo 'Worker startup log (redacted source only; no session tokens):'
+          if [ -f /tmp/cashcontrol-worker.log ]; then
+            grep -Ei 'error|fail|exception|missing|schema|module|wrangler' /tmp/cashcontrol-worker.log | head -80 || true
+          fi
+      - name: Stop Worker
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/cashcontrol-worker.pid ]; then kill "$(cat /tmp/cashcontrol-worker.pid)" 2>/dev/null || true; fi
+      - name: CPU reporting note
+        if: always()
+        run: |
+          echo 'WORKERS_FREE_CPU_NOT_MEASURED: local Workerd timing does not establish live Cloudflare Workers Free CPU usage.'
