@@ -26,6 +26,23 @@ jobs:
           npm ci --no-audit --no-fund
           npm run typecheck
           npm test
+      - name: Run real D1 migrations and authenticated Worker E2E
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+          npx wrangler d1 migrations apply DB --local --config wrangler.toml
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-worker.log 2>&1 &
+          echo $! > /tmp/cashcontrol-worker.pid
+          node scripts/e2e-auth.mjs
+      - name: Stop disposable Worker
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/cashcontrol-worker.pid ]; then kill "$(cat /tmp/cashcontrol-worker.pid)" 2>/dev/null || true; fi
       - name: Commit reproducible lockfile to draft PR only
         run: |
           git config user.name "github-actions[bot]"
