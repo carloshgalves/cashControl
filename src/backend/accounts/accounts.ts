@@ -50,15 +50,8 @@ interface ExistingAccount extends AccountRow {
 }
 
 const BALANCE_SQL = `
-  SELECT a.account_id, a.display_name, a.kind, a.currency,
-    a.opening_cents + COALESCE((
-      SELECT SUM(CASE WHEN t.target_account_id = a.account_id
-        THEN t.amount_cents ELSE -t.amount_cents END)
-      FROM initial_allocations t
-      WHERE t.owner_user_id = a.owner_user_id
-        AND (t.source_account_id = a.account_id OR t.target_account_id = a.account_id)
-    ), 0) AS balance_cents
-  FROM financial_accounts a`;
+  SELECT a.account_id, a.display_name, a.kind, a.currency, a.balance_cents
+  FROM financial_account_balances a`;
 
 function requireActor(actor: AuthenticatedActor): string {
   if (!actor || typeof actor.userId !== 'string' || !actor.userId.trim() || actor.userId.length > 128) {
@@ -161,14 +154,9 @@ export async function createAccount(
       INSERT INTO initial_allocations
         (owner_user_id, allocation_id, source_account_id, target_account_id, amount_cents, created_at)
       VALUES (?, ?, (
-        SELECT CASE WHEN
-          a.opening_cents + COALESCE((
-            SELECT SUM(CASE WHEN t.target_account_id = a.account_id THEN t.amount_cents ELSE -t.amount_cents END)
-            FROM initial_allocations t
-            WHERE t.owner_user_id = a.owner_user_id
-              AND (t.source_account_id = a.account_id OR t.target_account_id = a.account_id)
-          ), 0) >= ? THEN a.account_id ELSE NULL END
-        FROM financial_accounts a WHERE a.owner_user_id = ? AND a.account_id = ?
+        SELECT CASE WHEN a.balance_cents >= ? THEN a.account_id ELSE NULL END
+        FROM financial_account_balances a
+        WHERE a.owner_user_id = ? AND a.account_id = ?
       ), ?, ?, ?)
     `).bind(owner, crypto.randomUUID(), funding.cents, owner, funding.fromAccountId,
       accountId, funding.cents, now));

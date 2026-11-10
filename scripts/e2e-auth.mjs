@@ -45,9 +45,39 @@ async function main(){
   assert.equal(bl.data.accounts.length,0,'B can list A account');
   status(await request('/api/accounts/'+id,{cookie:b.cookie}),404,'B must not see A account');
   status(await request('/api/accounts',{method:'POST',cookie:a.cookie,body:p,originOverride:'https://evil.invalid'}),403,'cross-origin POST');
+  const incomeBody={
+    idempotencyKey:'income-'+nonce+'-posted',accountId:id,direction:'income',amount:'37.51',
+    method:'pix',description:'Pagamento recebido',sourceLabel:'Trabalho avulso',
+    occurredOn:'2026-11-10',ownerId:'bob',
+  };
+  const earned=await request('/api/movements',{method:'POST',cookie:a.cookie,body:incomeBody});
+  status(earned,201,'A posts income');
+  const earnedRetry=await request('/api/movements',{method:'POST',cookie:a.cookie,body:incomeBody});
+  status(earnedRetry,201,'A idempotent income retry');
+  assert.equal(earned.data.movement.movementId,earnedRetry.data.movement.movementId,'Duplicate cash entry');
+  const spent=await request('/api/movements',{method:'POST',cookie:a.cookie,body:{
+    ...incomeBody,idempotencyKey:'expense-'+nonce+'-posted',direction:'expense',
+    amount:'10.06',method:'debit',description:'Despesa paga',sourceLabel:null,
+  }});
+  status(spent,201,'A posts expense');
+  const newBalance=await request('/api/accounts/'+id,{cookie:a.cookie});
+  status(newBalance,200,'A account after cash movements');
+  assert.equal(newBalance.data.account.balanceCents,15090,'Balance must include exact cash flow');
+  const timeline=await request('/api/movements',{cookie:a.cookie});
+  status(timeline,200,'A movement history');
+  assert.equal(timeline.data.movements.length,2,'Missing or duplicate movements');
+  status(await request('/api/movements/'+earned.data.movement.movementId,{cookie:b.cookie}),404,'B cannot read A movement');
+  const bobTimeline=await request('/api/movements',{cookie:b.cookie});
+  status(bobTimeline,200,'B own movement timeline');
+  assert.equal(bobTimeline.data.movements.length,0,'B saw A history');
+  const foreignWrite=await request('/api/movements',{method:'POST',cookie:b.cookie,body:{
+    ...incomeBody,idempotencyKey:'foreign-'+nonce+'-attempt',
+  }});
+  assert.equal(foreignWrite.status,409,'B must not post to A account');
+  status(await request('/api/movements',{method:'POST',cookie:a.cookie,body:incomeBody,originOverride:'https://evil.invalid'}),403,'cross-origin cash posting');
   status(await request('/api/auth/sign-out',{method:'POST',cookie:a.cookie,body:{}}),200,'signout A');
   status(await request('/api/accounts',{cookie:a.cookie}),401,'A cookie revoked');
   status(await request('/api/accounts',{cookie:b.cookie}),200,'B session unaffected');
-  console.log('AUTH_E2E_PASS: 2 real signup/signin sessions, tenant isolation, CSRF, logout revocation');
+  console.log('FINANCE_E2E_PASS: 2 real sessions, exact cash totals, idempotency, isolation, CSRF, logout revocation');
 }
 main().catch(e=>{console.error('AUTH_E2E_FAIL:',e.message);process.exitCode=1;});

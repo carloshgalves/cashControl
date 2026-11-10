@@ -1,5 +1,6 @@
 import { createAccount, getAccount, listAccounts, type AuthenticatedActor, type FinancialDatabase } from '../accounts/accounts.ts';
 import { parseCents } from '../../domain/money.ts';
+import { getMovement, listMovements, postMovement } from '../movements/movements.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -19,7 +20,7 @@ const error = (status: number, code: string) => json({ error: code }, status);
  * database-verified session lookup. Headers like x-user-id and JSON ownerId are
  * deliberately ignored. We do NOT accept user identifiers as function inputs.
  */
-export async function handleAccountsHttp(
+export async function handleFinancialHttp(
   request: Request,
   database: FinancialDatabase,
   lookupSession: SessionLookup,
@@ -62,6 +63,53 @@ export async function handleAccountsHttp(
     if (method === 'GET' && /^\/api\/accounts\/[0-9a-f-]{36}$/.test(path)) {
       const account = await getAccount(database, actor, path.slice('/api/accounts/'.length));
       return account ? json({ account }) : error(404, 'NOT_FOUND');
+    }
+    if (method === 'GET' && path === '/api/movements') {
+      const query = requestURL.searchParams;
+      const parsePage = (raw: string | null, fallback: number): number => {
+        if (raw === null) return fallback;
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
+        return Number(raw);
+      };
+      const accountId = query.get('accountId');
+      return json({ movements: await listMovements(database, actor, {
+        accountId: accountId ?? undefined,
+        limit: parsePage(query.get('limit'), 50),
+        offset: parsePage(query.get('offset'), 0),
+      }) });
+    }
+    if (method === 'GET' && /^\/api\/movements\/[0-9a-f-]{36}$/.test(path)) {
+      const movement = await getMovement(database, actor, path.slice('/api/movements/'.length));
+      return movement ? json({ movement }) : error(404, 'NOT_FOUND');
+    }
+    if (method === 'POST' && path === '/api/movements') {
+      if (!request.body) return error(400, 'INVALID_BODY');
+      const bodyBytes = await readBounded(request, 4096);
+      if (bodyBytes === null) return error(413, 'PAYLOAD_TOO_LARGE');
+      let data: unknown;
+      try { data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bodyBytes)); }
+      catch { return error(400, 'INVALID_JSON'); }
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return error(400, 'INVALID_BODY');
+      const v = data as Record<string, unknown>;
+      if (typeof v.amount !== 'string' || typeof v.idempotencyKey !== 'string' ||
+          typeof v.accountId !== 'string' || typeof v.description !== 'string' ||
+          typeof v.occurredOn !== 'string' ||
+          (v.direction !== 'income' && v.direction !== 'expense') ||
+          (v.method !== 'cash' && v.method !== 'pix' && v.method !== 'debit' && v.method !== 'bank_transfer') ||
+          (v.sourceLabel !== undefined && v.sourceLabel !== null && typeof v.sourceLabel !== 'string') ||
+          (v.category !== undefined && v.category !== null && typeof v.category !== 'string')) {
+        return error(400, 'INVALID_BODY');
+      }
+      let amount;
+      try { amount = parseCents(v.amount); } catch { return error(400, 'INVALID_AMOUNT'); }
+      const movement = await postMovement(database, actor, {
+        accountId: v.accountId, idempotencyKey: v.idempotencyKey,
+        direction: v.direction, amountCents: amount, method: v.method,
+        description: v.description, occurredOn: v.occurredOn,
+        sourceLabel: v.sourceLabel as string | null | undefined,
+        category: v.category as string | null | undefined,
+      });
+      return json({ movement }, 201);
     }
     if (method === 'POST' && path === '/api/accounts') {
       // Financial API requests must be bounded. A forged Content-Length is not sufficient.
@@ -125,3 +173,6 @@ async function readBounded(request: Request, max: number): Promise<Uint8Array | 
   for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
   return result;
 }
+
+// Backwards-compatible alias for the auth/accounts integration tests.
+export const handleAccountsHttp = handleFinancialHttp;
