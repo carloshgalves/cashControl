@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import './trail.css';
 import type { Obligation } from './api.ts';
 import { monthBounds, monthLabel, money, friendlyDate, today } from './finance.ts';
 import {
