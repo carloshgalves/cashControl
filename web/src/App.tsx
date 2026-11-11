@@ -2,20 +2,22 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, allPages, getSession, login, logout, request, snapshot } from './api.ts';
 import type { Account, Obligation, Movement, Session, Dashboard } from './api.ts';
+import { TrailView } from './TrailView.tsx';
 import {
   money, parseAmount, monthBounds, monthLabel, shiftMonth, today, weekOf, weekRange,
   groupWeeks, validateWeekReconciliation, timeline, dueOn, accountBalancePreview,
   friendlyDate,
 } from './finance.ts';
 
-type View = 'overview' | 'movement' | 'calendar' | 'accounts';
+type View = 'overview' | 'movement' | 'trail' | 'calendar' | 'accounts';
 type EntryMode = 'income' | 'expense' | 'transfer' | 'pay' | 'account';
 type Data = Awaited<ReturnType<typeof snapshot>>;
 const names: Record<View, string> = {
-  overview: 'Panorama', movement: 'Movimentos', calendar: 'Agenda', accounts: 'Minhas contas',
+  overview: 'Panorama', movement: 'Movimentos', trail: 'Trilha financeira', calendar: 'Agenda', accounts: 'Minhas contas',
 };
 const controls: { value: View; icon: string; short: string }[] = [
   { value: 'overview', icon: '◫', short: 'Início' }, { value: 'movement', icon: '↗', short: 'Fluxo' },
+  { value: 'trail', icon: '◉', short: 'Trilha' },
   { value: 'calendar', icon: '▦', short: 'Agenda' }, { value: 'accounts', icon: '◩', short: 'Contas' },
 ];
 const methodNames: Record<string, string> = { pix: 'Pix', cash: 'Espécie', debit: 'Débito', bank_transfer: 'Transferência externa' };
@@ -386,9 +388,11 @@ export function App() {
         <div><span className="eyebrow">Seu panorama financeiro</span><h1>{
           view==='overview' ? 'Seu dinheiro tem um ritmo.' :
             view==='movement' ? 'A história do seu dinheiro.' :
+            view==='trail' ? 'O que aconteceu. O que vem a seguir.' :
             view==='calendar' ? 'O que vem pela frente.' : 'Onde está seu dinheiro.'
         }</h1><p>{view==='overview' ? 'O que mudou, o que vem e onde você pode agir.' :
           view==='movement' ? 'Entradas, saídas, reembolsos e transferências sem dupla contagem.' :
+          view==='trail' ? 'Eventos financeiros, alertas e vencimentos na mesma sequência.' :
           view==='calendar' ? 'Compromissos futuros, sem confundir vencimento com pagamento.' :
           'O dinheiro muda de lugar sem virar uma nova receita.'}</p></div>
         <div className="period-control" aria-label="Mês de referência">
@@ -484,6 +488,15 @@ export function App() {
             <div className="finance-note"><Icon>ⓘ</Icon><span>O saldo é atual. As obrigações em aberto e as movimentações do mês são indicadores distintos.</span></div>
           </div>
         </div>}
+        {view==='trail' && <TrailView
+          month={month} accounts={accounts} refreshKey={refreshKey}
+          onChangeMonth={next=>{setMonth(next);setWeek(1);setSelectedDay(null);}}
+          onPay={obligationId=>{
+            const bill=data.obligations.find(o=>o.obligationId===obligationId && o.outstandingCents>0);
+            if(bill)setModal({mode:'pay',bill});
+            else {setNotice('Obrigação atualizada ou indisponível.');setRefreshKey(x=>x+1);}
+          }}
+        />}
         {view==='movement' && <section className="flow-panel wide-section">
           <div className="section-head"><div><h2>Trilha do dinheiro</h2><p>Eventos reais registrados em {monthLabel(month)}.</p></div>
             <button className="primary-btn" disabled={!accounts.length} onClick={()=>setModal({mode:'expense'})}>＋ Novo movimento</button></div>
