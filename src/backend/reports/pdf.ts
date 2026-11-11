@@ -40,10 +40,10 @@ function wrapSafe(value:string,maxWidth:number,size:number,bold=false):string[]{
  const input=pdfSafe(value),out:string[]=[];
  let line='',width=0;
  const flush=()=>{if(line.trim())out.push(line.trimEnd());line='';width=0;};
- for(const char of input){
-  const cp=char.codePointAt(0)!;
-  const metrics=bold?helveticaBold:helvetica;
-  const glyphWidth=(cp>=32&&cp<=126?metrics[cp-32]!:1015)*size/1000;
+ // Unsupported Unicode glyphs become visible [U+XXXX] codes. Keep each
+ // marker atomic when wrapping, so a page break cannot corrupt its meaning.
+ for(const char of input.match(/\[U\+[0-9A-F]+\]|./gu)??[]){
+  const glyphWidth=textWidthSafe(char,size,bold);
   if(width+glyphWidth<=maxWidth+0.001){line+=char;width+=glyphWidth;continue;}
   const lastSpace=line.lastIndexOf(' ');
   if(lastSpace>0){
