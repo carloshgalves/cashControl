@@ -152,6 +152,10 @@ async function main(){
       idempotencyKey:'ui-trail-bill-'+tag,title:'Energia teste D5',amount:'45.00',dueOn:dueFive,
     }});
     assert.equal(dueBill.status(),201,'Trail bill fixture must be persisted');
+    const overdueBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
+      idempotencyKey:'ui-trail-overdue-'+tag,title:'Conta vencida C2',amount:'9.00',dueOn:'2026-11-10',
+    }});
+    assert.equal(overdueBill.status(),201,'Overdue filter fixture must persist');
     const cancelBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
       idempotencyKey:'ui-trail-cancel-'+tag,title:'Compra cancelada C2',amount:'19.00',dueOn:'2026-11-24',
     }});
@@ -180,6 +184,9 @@ async function main(){
     await page.getByText('Sem débito').first().waitFor();
     await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Realizados'}).click();
     await page.getByText('Serviço avulso').first().waitFor();
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Atrasados'}).click();
+    await page.getByText('Conta vencida C2').first().waitFor();
+    await page.getByText('Atrasado').first().waitFor();
     log('C2 trail browser passed: alerts, contextual payment, cancellation, status filter');
     log('C2 pagination regression: due alert must remain actionable beyond first 30 chronological events');
     const ownAccounts=(await (await page.request.get(APP+'/api/accounts')).json()).accounts;
