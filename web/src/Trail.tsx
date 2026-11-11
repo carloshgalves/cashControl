@@ -140,13 +140,19 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
   const selected = dayEvents.find(item => item.id === selectedId) ?? dayEvents[0] ?? null;
   // Alert cards can refer to another month. Show the actual unpaid obligation
   // without pretending that it belongs to the currently selected month.
-  const detailEvent: TrailEvent | null = pinnedAlert ? {
+  // An alert can refer to an event outside the first paginated timeline page.
+  // Keep it selected and read its outstanding amount from the latest canonical
+  // obligations snapshot, never an amount cached before a payment/cancellation.
+  const livePinned = pinnedAlert
+    ? obligations.find(b => b.obligationId === pinnedAlert.obligationId && b.outstandingCents > 0)
+    : undefined;
+  const detailEvent: TrailEvent | null = livePinned && pinnedAlert ? {
     id: 'obligation:' + pinnedAlert.obligationId,
-    date: pinnedAlert.dueOn, kind: 'obligation',
-    status: pinnedAlert.dueOn > asOf ? 'planned' : 'pending',
-    title: pinnedAlert.title, amountCents: pinnedAlert.outstandingCents,
-    accountId: null, obligationId: pinnedAlert.obligationId, relatedId: null,
-  } : selected;
+    date: livePinned.dueOn, kind: 'obligation',
+    status: livePinned.dueOn > asOf ? 'planned' : 'pending',
+    title: livePinned.title, amountCents: livePinned.outstandingCents,
+    accountId: null, obligationId: livePinned.obligationId, relatedId: null,
+  } : pinnedAlert ? null : selected;
   const activeObligation = detailEvent ? findPayable(detailEvent,obligations) : undefined;
 
   async function nextPage() {
@@ -171,19 +177,16 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
     finally { setAlertLoading(false); }
   }
   function selectAlert(alert: DueAlert) {
+    // Never discard the pin simply because this month's due event has not
+    // reached the first server page (or lies in another month).
     setPinnedAlert(alert);
-    if (alert.dueOn >= from && alert.dueOn <= to) {
-      setPinnedAlert(null);
-      const targetId = 'obligation:' + alert.obligationId;
-      setSelectedDay(null);
-      setSelectedId(targetId);
-      if (filter !== 'all' || loading) {
-        pendingAlertSelection.current = targetId;
-        setFilter('all');
-      }
+    setSelectedDay(null);
+    const targetId = 'obligation:' + alert.obligationId;
+    setSelectedId(targetId);
+    if (filter !== 'all' || loading) {
+      pendingAlertSelection.current = targetId;
+      setFilter('all');
     }
-    // Outside the chosen month, the details panel still shows the real
-    // obligation and contextual payment action without changing the month.
   }
 
   return <section className="trail-feature" aria-label="Trilha financeira">
