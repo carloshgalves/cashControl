@@ -1,5 +1,5 @@
 name: oneoff-frontend-lock
-# Third pass: money preview fixture corrected; lock only if full suite passes.
+# Fourth pass: pin browser test dependency and revalidate full React build; remove afterward.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
@@ -22,6 +22,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run ui:check
           npm run ui:test
+          node --check web/tests/browser-e2e.mjs
           npm run ui:build
           npm run typecheck
           npm test
