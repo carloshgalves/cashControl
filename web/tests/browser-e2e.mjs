@@ -186,6 +186,8 @@ async function main(){
     await page.reload();
     await page.getByRole('button',{name:'Trilha financeira'}).click();
     await page.getByRole('heading',{name:/A trilha de novembro de 2026/i}).waitFor();
+    assert.equal(await page.getByRole('heading',{name:/O que aconteceu/i}).count(),1,
+      'Trail duplicates the approved editorial hero headline');
     await page.getByRole('button',{name:/Conta D5/}).first().click();
     await page.getByRole('region',{name:'Detalhes do evento'}).getByText('Conta D5').waitFor();
     await page.getByRole('group',{name:'Filtrar eventos'}).getByRole('button',{name:'Cancelados'}).click();
