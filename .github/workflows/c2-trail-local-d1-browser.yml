@@ -1,0 +1,65 @@
+name: c2-trail-local-d1-browser
+# Disposable branch-scoped validation, no hosted Cloudflare deployment or secrets.
+on:
+  push:
+    branches: [feat/c2-financial-trail-alerts]
+    paths: [.github/workflows/c2-trail-local-d1-browser.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cashcontrol-c2-trail-local-d1
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript and production build
+        run: |
+          npm run typecheck
+          npm run ui:check
+          npm run ui:build
+          node --check web/tests/browser-e2e.mjs
+      - name: Full backend and frontend unit regression
+        run: |
+          npm test
+          npm run ui:test
+      - name: Install headless Chromium
+        run: npx playwright install --only-shell chromium
+      - name: Configure ephemeral D1 and real local Better Auth
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply migrations 0001 through 0006 in D1 local
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start local Worker and production preview
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/c2-worker.log 2>&1 &
+          echo $! > /tmp/c2-worker.pid
+          npm run ui:preview > /tmp/c2-vite.log 2>&1 &
+          echo $! > /tmp/c2-vite.pid
+      - name: Chromium E2E with actual D1, two sessions and trail interactions
+        run: npm run ui:e2e
+      - name: Stop disposable processes
+        if: always()
+        shell: bash
+        run: |
+          for file in /tmp/c2-worker.pid /tmp/c2-vite.pid; do
+            if [ -f "$file" ]; then kill "$(cat "$file")" 2>/dev/null || true; fi
+          done
+      - name: No deploy
+        if: always()
+        run: echo "NO_DEPLOY; NO_REMOTE_D1; NO_REAL_USER_DATA"
