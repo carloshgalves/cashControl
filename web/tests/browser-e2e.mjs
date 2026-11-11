@@ -6,6 +6,8 @@ import { chromium } from 'playwright';
 const APP = 'http://127.0.0.1:5173';
 const API = 'http://127.0.0.1:8787';
 const tag = randomUUID().slice(0,8);
+const FIXED_BROWSER_DATE = new Date('2026-11-11T13:00:00.000Z');
+const D5_DUE_ON = '2026-11-16';
 const users = [
   {email:'ui-alice-'+tag+'@example.test',password:'Good!Password-'+randomUUID().slice(0,20),name:'Alice'},
   {email:'ui-bob-'+tag+'@example.test',password:'Good!Password-'+randomUUID().slice(0,20),name:'Bob'},
@@ -66,9 +68,12 @@ async function main(){
   await readyUi();
   await Promise.all(users.map(signup));
   const browser=await chromium.launch({headless:true});
-  const context=await browser.newContext({viewport:{width:1366,height:900},locale:'pt-BR'});
+  const context=await browser.newContext({viewport:{width:1366,height:900},locale:'pt-BR',timezoneId:'America/Fortaleza'});
   const page=await context.newPage();
   page.setDefaultTimeout(12000);
+  // Lock only the browser's civil date. Better Auth and the Worker retain their
+  // real clocks, so this never fabricates session validity or auth expirations.
+  await page.clock.setFixedTime(FIXED_BROWSER_DATE);
   const pageErrors=[];
   page.on('pageerror',e=>pageErrors.push(e.message));
   try {
@@ -76,6 +81,8 @@ async function main(){
     await page.goto(APP,{waitUntil:'domcontentloaded'});
     await loginUi(page,users[0]);
     await monthNovember(page);
+    assert.equal(await page.evaluate(()=>new Date().toISOString()),FIXED_BROWSER_DATE.toISOString(),
+      'Browser date must stay pinned regardless of host month or timezone');
     log('First empty state creates general wallet without any bank');
     await page.getByRole('button',{name:/Criar minha primeira carteira/}).click();
     await page.getByLabel('Nome da conta').fill('Carteira principal');
@@ -146,9 +153,7 @@ async function main(){
     assert.equal(d.balances.totalCents,10600);
     assert.equal(d.obligations.outstandingCents,3000);
     log('C2 financial trail: real D-5 alert, planned/pending states and calendar interactions');
-    const fiveDays = new Date();
-    fiveDays.setDate(fiveDays.getDate()+5);
-    const dueFive = fiveDays.toISOString().slice(0,10);
+    const dueFive = D5_DUE_ON; // exactly five civil days after fixed 2026-11-11
     const dueBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
       idempotencyKey:'ui-trail-bill-'+tag,title:'Energia teste D5',amount:'45.00',dueOn:dueFive,
     }});

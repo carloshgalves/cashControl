@@ -12,6 +12,9 @@ import { makeReport, totalsOf, ReportAccountNotFound } from '../src/backend/repo
 import { ReportTooLargeError } from '../src/backend/timeline/timeline.ts';
 import { handleFinancialHttp } from '../src/backend/http/accounts-handler.ts';
 import { parseCents } from '../src/domain/money.ts';
+import { formatBRL, exactBRLDecimal, xlsxMoneyCell } from '../src/backend/reports/money.ts';
+import { createPdf } from '../src/backend/reports/pdf.ts';
+import { createXlsx } from '../src/backend/reports/xlsx.ts';
 
 class Statement {
   constructor(db,sql,args=[]) {this.db=db;this.sql=sql;this.args=args;}
@@ -370,3 +373,72 @@ test('PDF/XLSX metadata localize filter and both filenames distinguish scope wit
  const pdf=await makeReport(db,actor('alice'),options({status:'realized',format:'pdf'}));
  assert(pdfText(pdf.bytes).includes('Situação: Realizado'));
 }));
+
+
+test('regression C3-R3-01: words following a space split by glyph without losing text or exceeding PDF columns',()=>using(async db=>{
+ const title='i '+'M'.repeat(32);
+ const accountName='i '+'W'.repeat(17);
+ const acc=await account(db,'alice',accountName,'100');
+ await postMovement(db,actor('alice'),{
+  idempotencyKey:'pdf-space-long-word',accountId:acc.accountId,
+  direction:'income',amountCents:1234,method:'pix',
+  description:title,occurredOn:'2026-11-11',
+ },clock);
+ const report=await makeReport(db,actor('alice'),options({format:'pdf',accountId:acc.accountId}));
+ const lines=pdfRuns(report.bytes);
+ const titleRuns=lines.filter(run=>run.x===216);
+ const accountRuns=lines.filter(run=>run.x===549);
+ assert.equal(titleRuns.map(run=>run.text).join('').replace(/\s/g,''),'i'+'M'.repeat(32),
+  'word split must not lose any title glyph');
+ assert.equal(accountRuns.map(run=>run.text).join('').replace(/\s/g,''),'i'+'W'.repeat(17),
+  'word split must not lose any account glyph');
+ for(const run of titleRuns){
+  const width=[...run.text].reduce((sum,glyph)=>sum+(glyph==='M'?833:glyph==='i'?222:278),0)*run.size/1000;
+  assert(run.x+width<=216+238+.001,'PDF title crossed into situation column');
+ }
+ for(const run of accountRuns){
+  const width=[...run.text].reduce((sum,glyph)=>sum+(glyph==='W'?944:glyph==='i'?222:278),0)*run.size/1000;
+  assert(run.x+width<=549+128+.001,'PDF account crossed into amount column');
+ }
+ const rendered=pdfText(report.bytes);
+ assert(rendered.includes('R$ 12,34'));
+ assert.equal((rendered.match(/M/g)??[]).length,32);
+}));
+
+test('regression C3-R3-02: high totals retain every centavo in PDF and safe XLSX cells',()=>{
+ const large=9_000_000_000_000_001; // representable integer centavos; 1000 x 9e12 + 1
+ const rows=Array.from({length:1000},()=>({kind:'income',amountCents:9_000_000_000_000}));
+ rows.push({kind:'income',amountCents:1});
+ const t=totalsOf(rows);
+ assert.equal(t.incomeCents,large);
+ assert.equal(exactBRLDecimal(large),'90000000000000.01');
+ assert.equal(formatBRL(large),'R$ 90.000.000.000.000,01');
+ assert.equal(formatBRL(-large),'-R$ 90.000.000.000.000,01');
+ assert.equal(formatBRL(12345),'R$ 123,45');
+ assert.equal(xlsxMoneyCell(12345).type,'number','ordinary amounts remain numeric');
+ assert.deepEqual(xlsxMoneyCell(large),{type:'text',value:'R$ 90.000.000.000.000,01',style:0});
+ assert.deepEqual(xlsxMoneyCell(-large),{type:'text',value:'-R$ 90.000.000.000.000,01',style:0});
+ assert.throws(()=>xlsxMoneyCell(Number.MAX_SAFE_INTEGER+1),/Unsafe financial cents/);
+ const report=createPdf({
+  from:'2026-11-01',to:'2026-11-30',asOf:'2026-11-11',
+  scope:'Todas as contas e obrigações',status:'Todas as situações',
+  rows:[{date:'2026-11-11',kind:'Receita',title:'Teste centavos',status:'Realizado',account:'Conta',
+   amountCents:9_000_000_000_000}],
+  totals:{incomeCents:large,expensesCents:0,refundsCents:0,transfersCents:0,
+    outstandingCents:0,netCents:large},
+ });
+ assert(pdfText(report).includes('R$ 90.000.000.000.000,01'));
+ assert(!pdfText(report).includes('R$ 90.000.000.000.000,02'));
+ const sheet=createXlsx({
+  name:'Precisão',columnWidths:[32,40],rows:[
+   [{type:'text',value:'Título'}],[{type:'text',value:'Período'}],
+   [{type:'text',value:'Data'}],[{type:'text',value:'Filtro'}],
+   [{type:'text',value:'Escopo'}],[{type:'text',value:'Aviso'}],
+   [{type:'text',value:'Total'},xlsxMoneyCell(large)],
+   [{type:'text',value:'Normal'},xlsxMoneyCell(12345)],
+  ],
+ });
+ const xml=readZip(sheet).get('xl/worksheets/sheet1.xml');
+ assert.match(xml,/<c r="B7" t="inlineStr" s="0"><is><t xml:space="preserve">R\$ 90\.000\.000\.000\.000,01<\/t><\/is><\/c>/);
+ assert.match(xml,/<c r="B8" s="2"><v>123\.45<\/v><\/c>/);
+});
