@@ -20,11 +20,12 @@ export function zip(files:Array<{name:string,data:string}>):Uint8Array{
   const name=enc(file.name),body=enc(file.data),crc=crc32(body);
   const header=new Uint8Array(30+name.length);
   wr32(header,0,0x04034b50);wr16(header,4,20);wr16(header,6,0x800);
+  wr16(header,12,0x0021); // 1980-01-01, earliest valid ZIP DOS timestamp
   wr32(header,14,crc);wr32(header,18,body.length);wr32(header,22,body.length);wr16(header,26,name.length);
   header.set(name,30);local.push(header,body);
   const centralHeader=new Uint8Array(46+name.length);
   wr32(centralHeader,0,0x02014b50);wr16(centralHeader,4,20);wr16(centralHeader,6,20);
-  wr16(centralHeader,8,0x800);wr32(centralHeader,16,crc);
+  wr16(centralHeader,8,0x800);wr16(centralHeader,14,0x0021);wr32(centralHeader,16,crc);
   wr32(centralHeader,20,body.length);wr32(centralHeader,24,body.length);
   wr16(centralHeader,28,name.length);wr32(centralHeader,42,offset);
   centralHeader.set(name,46);central.push(centralHeader);offset+=header.length+body.length;
@@ -49,7 +50,7 @@ function sheetXml(t:ReportTable):string{
  const cols=t.columnWidths.map((w,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+Math.max(10,Math.min(55,w))+'" customWidth="1"/>').join('');
  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
   '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
-  '<sheetViews><sheetView workbookViewId="0"><pane ySplit="6" topLeftCell="A7" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
+  '<sheetViews><sheetView workbookViewId="0"><pane ySplit="7" topLeftCell="A8" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'+
   '<cols>'+cols+'</cols><sheetData>'+rows+'</sheetData>'+
   '<pageMargins left=".3" right=".3" top=".5" bottom=".5" header=".2" footer=".2"/></worksheet>';
 }
