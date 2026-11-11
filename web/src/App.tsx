@@ -76,9 +76,15 @@ interface FormDraft {
   fundingMode: 'external'|'reallocate';
 }
 function freshDraft(accounts: Account[], mode: EntryMode, bill?: Obligation): FormDraft {
+  // D1 may return same-second accounts in UUID order, not by the order the
+  // person created them. Transfers must never default to the same account.
+  const source = mode === 'transfer'
+    ? (accounts.find(account => account.balanceCents > 0) ?? accounts[0])
+    : accounts[0];
+  const destination = accounts.find(account => account.accountId !== source?.accountId);
   return { amount: bill ? (bill.outstandingCents / 100).toFixed(2).replace('.', ',') : '',
     description: bill ? 'Pagamento: ' + bill.title : '', date: today(),
-    accountId: accounts[0]?.accountId ?? '', targetId: accounts[1]?.accountId ?? '',
+    accountId: source?.accountId ?? '', targetId: destination?.accountId ?? '',
     method: 'pix', name: '', kind: accounts.length ? 'bank' : 'general',
     fundingMode: 'external' };
 }
