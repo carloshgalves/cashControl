@@ -59,6 +59,24 @@ Pipeline: `npm ci`, `npm run typecheck`, `npm run ui:check`, `npm run ui:build`,
 
 **[GitHub Actions #43087645571 — SUCCESS](https://github.com/carloshgalves/cashControl/actions/runs/43087645571)**: 126/126 backend, 15/15 frontend, typechecks, build, D1 local e Chromium (`C3_UI_DOWNLOAD_PASS`, `C3_UI_TENANT_PASS` e `UI_BROWSER_E2E_PASS`). Uma rodada final da documentação também será executada.
 
+
+## Segunda revisão adversarial — findings de apresentação corrigidos (11/11/2026)
+
+| Finding | Remediação | Evidência |
+|---|---|---|
+| C3-PDF-P1A — título com 120 `W` invadia a coluna seguinte | Layout das seis colunas com limites explícitos; larguras calculadas pelas métricas AFM de Helvetica/Helvetica-Bold para ASCII e limite conservador para demais glifos WinAnsi; quebra em limites reais de pontos | Teste de 120 `W` na descrição, medição independente da largura dos glifos e preservação de todos os caracteres |
+| C3-PDF-P1B — nome de conta com 80 `W` cortava o cabeçalho | Metadados do escopo e situação quebrados em múltiplas linhas, com resumo/tabela posicionados dinamicamente | Teste de escopo restrito à conta de 80 `W`, sem caracteres perdidos nem exceder a página |
+| C3-META-P2 — status interno `all`/`overdue` visível | Status localizados nos metadados XLSX e PDF (ex.: `Todas as situações`, `Atrasado`); eventos já tinham traduções | Testes reais de conteúdo dos dois formatos |
+| C3-NAME-P2 — relatórios com filtros diferentes recebiam o mesmo nome | Nome inclui período, situação e indicação `todas-contas`/`conta-selecionada`, além de sufixo aleatório não identificador; sem usuário, nome de conta ou UUID | Testes cliente/servidor de escopo e unicidade dos downloads |
+
+**Robustez adicional:** eventos cujo texto não cabe numa página são continuados na próxima sem repetir o valor monetário como nova ocorrência. Os caracteres fora de WinAnsi permanecem representados por marcadores `[U+XXXX]` atômicos, mesmo na quebra de linha. O limite de 450 páginas e o HTTP 413 continuam, com fixture de volume extremo ajustada para exercitar o limite sob o novo layout.
+
+**Ciclo de correções:** execuções intermediárias detectaram premissas obsoletas no teste de 455 páginas, chave de idempotência de fixture maior que o limite e filtro de conta ausente do caso adversarial do cabeçalho. Fixtures ajustadas sem enfraquecer as garantias: teste exige preservação de 120 `W`/80 `W`, verifica posições e valida continuação Unicode.
+
+**[GitHub Actions #43092783770 — SUCCESS](https://github.com/carloshgalves/cashControl/actions/runs/43092783770)**: 129/129 testes backend, 16/16 testes frontend, TypeScript, build, migrações D1 locais e Chromium com Better Auth de duas identidades (`C3_REAL_AUTH_EXPORT_PASS`, `C3_UI_DOWNLOAD_PASS`, `C3_UI_TENANT_PASS`, `UI_BROWSER_E2E_PASS`).
+
+**Conclusão deste escopo:** nenhum finding acionável reproduzível restante nos quatro itens da revisão. Sem auditoria formal de acessibilidade, impressão real em papel, deploy Cloudflare ou avaliação de carga; PR permanece Draft até aprovação de produto.
+
 ## Gate restante
 
 PR #40 permanece **Draft** até revisão visual humana e merge manual. Issue #18 permanece aberta até integrar em `main`. Produção hospedada, WCAG formal, carga e Cloudflare remota fora do escopo deste gate.

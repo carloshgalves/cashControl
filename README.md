@@ -54,4 +54,4 @@ Na interface, use **Exportar** ou **Exportar filtro** na trilha. Selecione perí
 
 Endpoint: `GET /api/reports/export?format=xlsx|pdf&from=AAAA-MM-DD&to=AAAA-MM-DD&asOf=AAAA-MM-DD&status=all` (filtro `accountId` opcional). Transferências próprias não são receita, pagamentos de obrigações não são duplicados e pendências não representam saída de caixa. Arquivos com mais de 2.000 eventos falham explicitamente (413).
 
-Validação: `npm test`, `npm run ui:test`, `npm run ui:build`, `npm run ui:e2e` com Worker, D1 e Chromium locais. [Relatório C3](docs/implementation/FINANCIAL-EXPORT-C3-REVIEW.md). **PR em revisão; nenhum deploy.**
+Validação: `npm test`, `npm run ui:test`, `npm run ui:build`, `npm run ui:e2e` com Worker, D1 e Chromium locais. Exportações usam nomes distintos por filtros, cabeçalhos PDF com quebra e limites medidos por fonte, além de rótulos em português. **Última revisão adversarial aprovada nas baterias locais: 129 backend + 16 frontend + Chromium real.** [Relatório C3](docs/implementation/FINANCIAL-EXPORT-C3-REVIEW.md). **PR Draft para aceite visual, sem deploy.**
