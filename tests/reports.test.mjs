@@ -300,7 +300,11 @@ function pdfRuns(bytes) {
 test('adversarial W120 titles and W80 account names stay in PDF columns and page bounds',()=>using(async db=>{
  const title='W'.repeat(120),name='W'.repeat(80);
  const a=await account(db,'alice',name,'100');
- await movement(db,'alice',a.accountId,'income',title,'8');
+ await postMovement(db,actor('alice'),{
+  idempotencyKey:'width-title-adversarial',accountId:a.accountId,
+  direction:'income',amountCents:cents('8'),method:'pix',
+  description:title,occurredOn:'2026-11-10',
+ },clock);
  const pdf=await makeReport(db,actor('alice'),options({format:'pdf'}));
  const runs=pdfRuns(pdf.bytes);
  assert(runs.length>15,'PDF text operands should be parsable independently');
@@ -336,14 +340,14 @@ test('very long Unicode descriptions preserve intact codepoint markers across co
  const pdf=createPdf({
   from:'2026-11-01',to:'2026-11-30',asOf:'2026-11-11',status:'Todas as situações',
   scope:'Todas as contas e obrigações',
-  rows:[{date:'2026-11-11',kind:'Receita',title:'😀'.repeat(120),
+  rows:[{date:'2026-11-11',kind:'Receita',title:'😀'.repeat(240),
    status:'Realizado',account:'W'.repeat(80),amountCents:12345}],
   totals:{incomeCents:12345,expensesCents:0,refundsCents:0,transfersCents:0,
    outstandingCents:0,netCents:12345},
  });
  const text=pdfText(pdf);
  const markers=text.match(/\[U\+1F600\]/g)??[];
- assert.equal(markers.length,120,'all unknown glyphs must remain identifiable after line wraps');
+ assert.equal(markers.length,240,'all unknown glyphs must remain identifiable after line wraps');
  assert((Buffer.from(pdf).toString('latin1').match(/\/Type \/Page \/Parent/g)??[]).length>1,
   'long records should continue on a new page instead of overflowing');
  const runs=pdfRuns(pdf).filter(row=>row.x===216&&row.text.includes('[U+1F600]'));
