@@ -1,5 +1,5 @@
 name: c2-trail-local-d1-browser
-# Second full run after sanitizing fixture keys; disposable local D1 only.
+# Third full run: scope modal confirmation button to actual dialog; D1 is local only.
 on:
   push:
     branches: [feat/c2-financial-trail-alerts]
