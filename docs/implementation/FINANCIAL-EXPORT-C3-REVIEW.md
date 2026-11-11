@@ -80,3 +80,11 @@ Pipeline: `npm ci`, `npm run typecheck`, `npm run ui:check`, `npm run ui:build`,
 ## Gate restante
 
 PR #40 permanece **Draft** até revisão visual humana e merge manual. Issue #18 permanece aberta até integrar em `main`. Produção hospedada, WCAG formal, carga e Cloudflare remota fora do escopo deste gate.
+
+## Terceira revisão adversarial — correções R3 (11/11/2026)
+
+- **C3-R3-01 (P1, PDF):** a quebra após espaços podia mover uma palavra longa inteira para uma coluna estreita e lançar RangeError. A nova rotina reavalia a largura até que o sufixo caiba, dividindo palavras longas por glifo e preservando marcadores Unicode [U+XXXX] atomicamente. Regressão com descrição "i " + 32 letras M e conta "i " + 17 letras W, verificando texto completo, limites reais das colunas e PDF gerado.
+- **C3-R3-02 (P1, dinheiro):** divisão por 100 via Number podia arredondar um centavo em totais elevados. Formatação de PDF agora usa BigInt sobre centavos inteiros seguros; XLSX preserva números ordinários como células numéricas e transforma montantes acima da precisão decimal confiável do Excel em **texto monetário explícito**. O caso sintético 9.000.000.000.000.001 centavos deve resultar em R$ 90.000.000.000.000,01, sem arredondar. Montantes exportados como texto não entram automaticamente em somas; essa limitação é intencional.
+- **C3-R3-03 (P2, E2E):** Chromium fixa 2026-11-11T13:00:00Z como data somente no navegador (America/Fortaleza); vencimento D-5 é 2026-11-16. Worker e Better Auth continuam com relógio real. A asserção do tempo do browser e as datas das fixtures não dependem do calendário de execução.
+
+Sem merge nem deploy. A PR permanece Draft; antes de declarar homologação final, conferir a execução do CI no commit mais recente.
