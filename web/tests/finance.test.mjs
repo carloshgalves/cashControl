@@ -16,7 +16,7 @@ test('Brazilian money input parses integer centavos, grouped BRL and rejects amb
   assert.equal(parseAmount('40'),'40.00');
   assert.equal(parseAmount('1.234,5'),'1234.50');
   assert.equal(parseAmount('12.34'),'12.34');
-  for(const v of ['0','0,00','-1','1.2.3','12,345','1e3','','Infinity','9'.repeat(15)]){
+  for(const v of ['0','0,00','-1','1.2.3','12,345','1e3','','Infinity','9'.repeat(15),'0.001','00.123','001.234','0.001,23']){
     assert.equal(parseAmount(v),null,v);
   }
   assert.equal(money(123456),'R$ 1.234,56');
