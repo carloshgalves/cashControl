@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# Browser re-review 5: synchronize modal visibility and assert amount field; no deploy.
+# Browser re-review 6: inspect React state when new movement dialog fails to mount; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
