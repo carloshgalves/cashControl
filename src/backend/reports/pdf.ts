@@ -13,11 +13,24 @@ const winAnsi=new Map<number,number>([
  [0x02dc,0x98],[0x2122,0x99],[0x0161,0x9a],[0x203a,0x9b],
  [0x0153,0x9c],[0x017e,0x9e],[0x0178,0x9f],
 ]);
+// A standard PDF font cannot render every Unicode glyph. Preserve unknown
+// code points visibly rather than silently turning names into '?' characters.
+// Complete Unicode values remain intact in the companion XLSX export.
+function pdfSafe(input:string):string{
+ let out='';
+ for(const char of input.normalize('NFC')){
+  const cp=char.codePointAt(0)!;
+  if((cp>=32&&cp<=126)||(cp>=160&&cp<=255)||winAnsi.has(cp))out+=char;
+  else if(cp<=32||cp===0x7f)out+=' ';
+  else out+='[U+'+cp.toString(16).toUpperCase().padStart(4,'0')+']';
+ }
+ return out;
+}
 function hexText(text:string):string{
  let hex='';
- for(const char of text.normalize('NFC')){
+ for(const char of pdfSafe(text)){
   const cp=char.codePointAt(0)!;
-  const byte=(cp>=32&&cp<=126)||(cp>=160&&cp<=255)?cp:winAnsi.get(cp)??63;
+  const byte=(cp>=32&&cp<=126)||(cp>=160&&cp<=255)?cp:winAnsi.get(cp)??32;
   hex+=byte.toString(16).padStart(2,'0').toUpperCase();
  }
  return '<'+hex+'>';
@@ -75,8 +88,8 @@ export function createPdf(report:PdfReport):Uint8Array {
  let current=begin(),y=361,count=0;
  for(const row of report.rows){
   // Widths are PDF points, not character counts; preserve readable titles.
-  const lines=wrap(row.title,251,9);
-  const accountLines=wrap(row.account,101,8);
+  const lines=wrap(pdfSafe(row.title),251,9);
+  const accountLines=wrap(pdfSafe(row.account),101,8);
   const height=Math.max(26,Math.max(lines.length,accountLines.length)*11+7);
   if(y-height<55){
    pages.push(current);current=begin();y=361;count=0;
