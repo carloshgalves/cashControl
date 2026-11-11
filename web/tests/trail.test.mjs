@@ -11,6 +11,7 @@ const event=(overrides={})=>({
 test('event labels identify past, projected and canceled explicitly without income illusion',()=>{
   assert.equal(statusLabel.planned,'Previsto');
   assert.equal(statusLabel.canceled,'Cancelado');
+  assert.equal(statusLabel.overdue,'Atrasado');
   assert.equal(kindLabel.transfer,'Transferência interna');
   assert.equal(eventValue(event()),'R$ 85,00');
   assert.equal(eventValue(event({kind:'cancellation',status:'canceled',amountCents:0})),'Sem débito');
@@ -18,7 +19,7 @@ test('event labels identify past, projected and canceled explicitly without inco
   assert.equal(eventValue(event({kind:'payment',status:'realized',amountCents:1050})),'−R$ 10,50');
   assert.equal(eventValue(event({kind:'refund',status:'realized',amountCents:1050})),'+R$ 10,50');
   assert.equal(eventValue(event({kind:'transfer',status:'realized',amountCents:1050})),'R$ 10,50');
-  assert.deepEqual(filterOptions.map(x=>x.value),['all','realized','pending','planned','canceled']);
+  assert.deepEqual(filterOptions.map(x=>x.value),['all','realized','pending','overdue','planned','canceled']);
 });
 test('D-10 / D-5 and overdue text is accessible without relying only on a color or badge',()=>{
   assert.equal(alertBand({level:'D-10'}),'D-10');
@@ -46,6 +47,7 @@ test('month queries include explicit civil reference and bounded page, no owner 
   assert.equal(parsed.searchParams.get('to'),'2026-11-30');
   assert.equal(parsed.searchParams.get('asOf'),'2026-11-11');
   assert.equal(parsed.searchParams.get('status'),'pending');
+  assert.equal(new URL('https://cash.example'+trailURL('2026-11','2026-11-11','overdue')).searchParams.get('status'),'overdue');
   assert.equal(parsed.searchParams.get('limit'),'30');
   assert.equal(parsed.searchParams.get('offset'),'30');
   assert(!parsed.searchParams.has('ownerId'));
