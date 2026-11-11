@@ -29,6 +29,7 @@ test('report URLs include explicit civil dates, status, account and format; neve
   assert.equal(isCivilDate('2026-02-30'),false);
   assert.equal(isCivilDate('2024-02-29'),true);
   assert.equal(isCivilDate('2026-13-01'),false);
+  assert.equal(isCivilDate('0001-01-01'),false); // server requires year >= 1000
 });
 test('invalid filters fail locally before network or file generation',()=>{
   for(const bad of [

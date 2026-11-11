@@ -24,7 +24,8 @@ As DEC registram **o que foi aprovado** em discussões de produto. Não são ADR
 - Backend financeiro (contas, movimentos, obrigações, transferências e reembolsos): implementado e testado em D1 local.
 - Dashboard backend: [PR #36](https://github.com/carloshgalves/cashControl/pull/36), mesclada, com dados em centavos e isolamento por usuário.
 - Dashboard interativo React/Vite: [PR #37](https://github.com/carloshgalves/cashControl/pull/37), mesclada, aprovada visualmente e validada no Chromium.
-- Trilha financeira e avisos in-app D-10/D-5: Issue #17 implementada na branch `feat/financial-timeline-alerts`, em revisão/PR, sem merge automático.
+- Trilha financeira e avisos in-app D-10/D-5: Issue #17 concluída; PRs #38/#39 mescladas na `main`.
+- Exportação privada XLSX/PDF: Issue #18 implementada na [PR #40](https://github.com/carloshgalves/cashControl/pull/40), ainda Draft para revisão visual e merge manual.
 - Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo.
 
 O documento de decisões é a fonte atual das regras de negócio acordadas. Mudanças devem ser explicitadas e vinculadas à decisão que modificam.
@@ -46,3 +47,11 @@ Relatório de revisão da interface: [INTERACTIVE-UI-REVIEW.md](docs/implementat
 A tela **Trilha financeira** reúne os eventos confirmados, obrigações pendentes, cancelamentos e avisos de vencimento. Os indicadores D-10/D-5 são calculados a partir da **data local do navegador** e do saldo pendente efetivo no D1. Não há pagamentos automáticos, previsões fictícias ou notificações externas.
 
 Endpoints de leitura `GET /api/timeline?from=2026-11-01&to=2026-11-30&asOf=2026-11-11` e `GET /api/alerts?asOf=2026-11-11`. Os dois exigem sessão Better Auth e usam paginação/limites. Testes locais: `npm test`, `npm run ui:test`, `npm run ui:build` e `npm run ui:e2e` (com D1 local e Chromium). Relatório: [FINANCIAL-TIMELINE-REVIEW.md](docs/implementation/FINANCIAL-TIMELINE-REVIEW.md), evidência [GitHub Actions #43064714180](https://github.com/carloshgalves/cashControl/actions/runs/43064714180).
+
+## Exportação XLSX/PDF (C3)
+
+Na interface, use **Exportar** ou **Exportar filtro** na trilha. Selecione período, conta (ou todas) e situação, depois **Baixar XLSX** ou **Baixar PDF**. O relatório consulta exclusivamente a sessão Better Auth verificada no servidor; não há link público ou persistência de documentos.
+
+Endpoint: `GET /api/reports/export?format=xlsx|pdf&from=AAAA-MM-DD&to=AAAA-MM-DD&asOf=AAAA-MM-DD&status=all` (filtro `accountId` opcional). Transferências próprias não são receita, pagamentos de obrigações não são duplicados e pendências não representam saída de caixa. Arquivos com mais de 2.000 eventos falham explicitamente (413).
+
+Validação: `npm test`, `npm run ui:test`, `npm run ui:build`, `npm run ui:e2e` com Worker, D1 e Chromium locais. [Relatório C3](docs/implementation/FINANCIAL-EXPORT-C3-REVIEW.md). **PR em revisão; nenhum deploy.**

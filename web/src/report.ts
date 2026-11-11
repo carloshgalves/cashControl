@@ -24,7 +24,7 @@ const MIME: Record<ReportFormat, string> = {
 export function isCivilDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const [y, m, d] = date.split('-').map(Number);
-  if (y < 1 || y > 9999 || m < 1 || m > 12 || d < 1 || d > 31) return false;
+  if (y < 1000 || y > 9999 || m < 1 || m > 12 || d < 1 || d > 31) return false;
   const utc = new Date(Date.UTC(y, m - 1, d));
   return utc.getUTCFullYear() === y && utc.getUTCMonth() === m - 1 && utc.getUTCDate() === d;
 }
