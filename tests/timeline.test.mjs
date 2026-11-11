@@ -94,6 +94,19 @@ test('in-app alert window D-10 and D-5 includes exact edges, today and overdue',
   assert.equal(result.alerts.length,6);
 }));
 
+test('upcoming due alerts precede overdue, with newest missed bills before older ones',()=>using(async db=>{
+  await bill(db,'OldLate','2026-09-01');
+  await bill(db,'RecentLate','2026-11-10');
+  await bill(db,'Now','2026-11-11');
+  await bill(db,'Soon','2026-11-13');
+  const all=await listDueAlerts(db,actor('alice'),{asOf:'2026-11-11'});
+  assert.deepEqual(all.alerts.map(x=>x.title),['Now','Soon','RecentLate','OldLate']);
+  const first=await listDueAlerts(db,actor('alice'),{asOf:'2026-11-11',limit:2});
+  const second=await listDueAlerts(db,actor('alice'),{asOf:'2026-11-11',limit:2,offset:2});
+  assert.equal(first.hasMore,true);assert.equal(second.hasMore,false);
+  assert.deepEqual([...first.alerts,...second.alerts].map(x=>x.title),all.alerts.map(x=>x.title));
+}));
+
 test('partial settlement reduces warning amount, full settlement removes alert without rewriting cash',()=>using(async db=>{
   const a=await wallet(db);
   const b=await bill(db,'Electricity','2026-11-16');
@@ -157,13 +170,16 @@ test('union ledger counts each payment, refund and transfer exactly once, with c
   assert.equal(v.events.find(x=>x.kind==='payment').obligationId,obligation.obligationId);
 }));
 
-test('status filters distinguish planned from overdue/pending and no unsupported income forecast',()=>using(async db=>{
+test('status filters distinguish future, today, overdue and realized without speculative cash',()=>using(async db=>{
   await bill(db,'Future','2026-11-21');
+  await bill(db,'Today','2026-11-11');
   await bill(db,'Late','2026-11-10');
   const planned=await listTimeline(db,actor('alice'),period({status:'planned'}));
   const pending=await listTimeline(db,actor('alice'),period({status:'pending'}));
+  const overdue=await listTimeline(db,actor('alice'),period({status:'overdue'}));
   assert.deepEqual(planned.events.map(x=>x.title),['Future']);
-  assert.deepEqual(pending.events.map(x=>x.title),['Late']);
+  assert.deepEqual(pending.events.map(x=>x.title),['Today']);
+  assert.deepEqual(overdue.events.map(x=>x.title),['Late']);
   assert.deepEqual((await listTimeline(db,actor('alice'),period({status:'realized'}))).events,[]);
 }));
 
