@@ -147,6 +147,9 @@ const EVENT_SQL = [
   ' account_id, obligation_id, related_id',
   ' FROM all_events WHERE event_date BETWEEN ? AND ?',
   " AND (? = 'all' OR event_status = ?)",
+  // A selected account includes both legs of a transfer, but an unassigned
+  // obligation is never silently attributed to an account.
+  " AND (? IS NULL OR account_id = ? OR (event_kind = 'transfer' AND related_id = ?))",
   // The approved rail reads left-to-right chronologically within the month.
   ' ORDER BY event_date ASC, created_at ASC, event_id ASC',
   ' LIMIT ? OFFSET ?',
@@ -157,7 +160,7 @@ export async function listTimeline(db: FinancialDatabase, actor: AuthenticatedAc
   const who = owner(actor), { status, limit, offset } = checkOptions(options);
   const rows = await db.prepare(EVENT_SQL).bind(
     who, who, options.asOf, options.asOf, who, who,
-    options.from, options.to, status, status, limit + 1, offset,
+    options.from, options.to, status, status, null, null, null, limit + 1, offset,
   ).all<EventRow>();
   const events = rows.results.slice(0, limit).map((r): TimelineEvent => {
     assertCents(r.amount_cents);
@@ -212,4 +215,46 @@ export async function listDueAlerts(db: FinancialDatabase, actor: AuthenticatedA
     };
   });
   return { alerts, hasMore: rows.results.length > limit, limit, offset, asOf: options.asOf };
+}
+
+
+export class ReportTooLargeError extends Error {
+  constructor() { super('REPORT_TOO_LARGE'); this.name = 'ReportTooLargeError'; }
+}
+/** One SQLite/D1 SELECT: obtain a complete, globally ordered, owner-scoped
+ *  export snapshot or reject over the bound. Never export a partial page.
+ *  accountId is separately owner-authorized by the HTTP controller.
+ */
+export async function readExportTimeline(
+  db: FinancialDatabase, actor: AuthenticatedActor,
+  options: Pick<TimelineOptions,'from'|'to'|'asOf'|'status'> & { accountId?: string },
+  maxEvents = 2000,
+): Promise<TimelineEvent[]> {
+  const who = owner(actor);
+  const { status } = checkOptions({ ...options, limit:100, offset:0 });
+  if (!Number.isInteger(maxEvents) || maxEvents < 1 || maxEvents > 2000) {
+    throw new TypeError('Invalid report limit');
+  }
+  const account = options.accountId ?? null;
+  if (account !== null && !/^[0-9a-f-]{36}$/.test(account)) {
+    throw new TypeError('Invalid account id');
+  }
+  const rows = await db.prepare(EVENT_SQL).bind(
+    who, who, options.asOf, options.asOf, who, who,
+    options.from, options.to, status, status, account, account, account,
+    maxEvents + 1, 0,
+  ).all<EventRow>();
+  if (rows.results.length > maxEvents) throw new ReportTooLargeError();
+  return rows.results.map(r=>{
+    assertCents(r.amount_cents);
+    if (!r.event_id || !r.title || !statuses.has(r.event_status) ||
+        !['income','expense','payment','refund','transfer','obligation','cancellation'].includes(r.event_kind)) {
+      throw new Error('Inconsistent timeline event');
+    }
+    return {
+      id:r.event_id, date:r.event_date,kind:r.event_kind,status:r.event_status,
+      title:r.title,amountCents:r.amount_cents,accountId:r.account_id,
+      obligationId:r.obligation_id,relatedId:r.related_id,
+    };
+  });
 }
