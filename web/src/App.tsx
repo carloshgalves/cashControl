@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, allPages, getSession, login, logout, request, snapshot } from './api.ts';
+import { AlertPreview, TimelineScreen } from './Trail.tsx';
 import type { Account, Obligation, Movement, Session, Dashboard } from './api.ts';
 import {
   money, parseAmount, monthBounds, monthLabel, shiftMonth, today, weekOf, weekRange,
@@ -8,14 +9,15 @@ import {
   friendlyDate,
 } from './finance.ts';
 
-type View = 'overview' | 'movement' | 'calendar' | 'accounts';
+type View = 'overview' | 'movement' | 'trail' | 'calendar' | 'accounts';
 type EntryMode = 'income' | 'expense' | 'transfer' | 'pay' | 'account';
 type Data = Awaited<ReturnType<typeof snapshot>>;
 const names: Record<View, string> = {
-  overview: 'Panorama', movement: 'Movimentos', calendar: 'Agenda', accounts: 'Minhas contas',
+  overview: 'Panorama', movement: 'Movimentos', trail: 'Trilha financeira', calendar: 'Agenda', accounts: 'Minhas contas',
 };
 const controls: { value: View; icon: string; short: string }[] = [
   { value: 'overview', icon: '◫', short: 'Início' }, { value: 'movement', icon: '↗', short: 'Fluxo' },
+  { value: 'trail', icon: '◉', short: 'Trilha' },
   { value: 'calendar', icon: '▦', short: 'Agenda' }, { value: 'accounts', icon: '◩', short: 'Contas' },
 ];
 const methodNames: Record<string, string> = { pix: 'Pix', cash: 'Espécie', debit: 'Débito', bank_transfer: 'Transferência externa' };
@@ -386,9 +388,11 @@ export function App() {
         <div><span className="eyebrow">Seu panorama financeiro</span><h1>{
           view==='overview' ? 'Seu dinheiro tem um ritmo.' :
             view==='movement' ? 'A história do seu dinheiro.' :
+            view==='trail' ? 'Sua trilha financeira.' :
             view==='calendar' ? 'O que vem pela frente.' : 'Onde está seu dinheiro.'
         }</h1><p>{view==='overview' ? 'O que mudou, o que vem e onde você pode agir.' :
           view==='movement' ? 'Entradas, saídas, reembolsos e transferências sem dupla contagem.' :
+          view==='trail' ? 'Eventos reais, compromissos futuros e vencimentos para explorar.' :
           view==='calendar' ? 'Compromissos futuros, sem confundir vencimento com pagamento.' :
           'O dinheiro muda de lugar sem virar uma nova receita.'}</p></div>
         <div className="period-control" aria-label="Mês de referência">
@@ -402,6 +406,9 @@ export function App() {
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {data && !loading && !error && <>
+        {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
+        {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
+          onPay={bill=>setModal({mode:'pay',bill})}/>}
         {view==='overview' && <div className="grid-main">
           <div className="main-column">
             <section className="balance-panel" aria-labelledby="balance-title">
