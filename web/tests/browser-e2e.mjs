@@ -24,6 +24,13 @@ async function ready() {
   }
   throw new Error('Local D1 Worker never became ready');
 }
+async function readyUi() {
+  for (let i=0;i<60;i++) {
+    try { const r=await fetch(APP);if(r.ok && (await r.text()).includes('cashControl')) return; } catch {}
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  throw new Error('Vite frontend never became ready');
+}
 function log(step){process.stdout.write('UI_E2E_STEP: '+step+'\n');}
 async function loginUi(page,user) {
   await page.getByLabel('E-mail').fill(user.email);
@@ -41,6 +48,7 @@ async function monthNovember(page) {
 }
 async function main(){
   await ready();
+  await readyUi();
   await Promise.all(users.map(signup));
   const browser=await chromium.launch({headless:true});
   const context=await browser.newContext({viewport:{width:1366,height:900},locale:'pt-BR'});
