@@ -45,7 +45,7 @@ A coluna *Valor do evento* da planilha armazena número com formato monetário, 
 
 Pipeline: `npm ci`, `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, `npm test`, `npm run ui:test`, migrações **0001–0006 em D1 local**, `npm run ui:e2e` em Chromium sobre a **build existente de produção** (login e duas sessões Better Auth reais), incluindo endpoint PDF/XLSX e proteção de conta alheia. Todos os testes usam usuários fictícios e banco descartável.
 
-[CI de integração backend C3 — GitHub Actions](https://github.com/carloshgalves/cashControl/actions/workflows/_c3-report-backend-check.yml)
+**[GitHub Actions #43073453008 — SUCCESS](https://github.com/carloshgalves/cashControl/actions/runs/43073453008)**: **126/126 testes backend**, **9/9 frontend**, TypeScript/build aprovados, D1 local 0001–0006 aplicado, `C3_REAL_AUTH_EXPORT_PASS` e `UI_BROWSER_E2E_PASS` em Chromium com Better Auth real e dois usuários fictícios.
 
 ## Próximo gate
 
