@@ -6,6 +6,8 @@ import { createInternalTransfer, getInternalTransfer, listInternalTransfers } fr
 import { cancelUnpaidObligation, getExpenseRefund, listExpenseRefunds, refundPaidExpense } from '../compensations/compensations.ts';
 import { getDashboard } from '../dashboard/dashboard.ts';
 import { listTimeline, listDueAlerts } from '../timeline/timeline.ts';
+import { makeReport, ReportAccountNotFound, ReportReconciliationError } from '../reports/report.ts';
+import { ReportTooLargeError } from '../timeline/timeline.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -62,6 +64,34 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
+    if (method === 'GET' && path === '/api/reports/export') {
+      const query=requestURL.searchParams;
+      const allowed=new Set(['format','from','to','asOf','status','accountId']);
+      let bad=false;
+      query.forEach((_value,key)=>{
+        if(!allowed.has(key)||query.getAll(key).length!==1)bad=true;
+      });
+      if(bad)return error(400,'INVALID_FILTER');
+      const format=query.get('format'),from=query.get('from'),
+        to=query.get('to'),asOf=query.get('asOf'),status=query.get('status')??'all';
+      if(!format||!from||!to||!asOf||(format!=='pdf'&&format!=='xlsx')){
+        return error(400,'INVALID_REPORT');
+      }
+      const download=await makeReport(database,actor,{
+        format,from,to,asOf,status,accountId:query.get('accountId')??undefined,
+      });
+      return new Response(download.bytes as BodyInit,{
+        status:200,headers:{
+          'content-type':download.contentType,
+          'content-disposition':'attachment; filename="'+download.filename+'"',
+          'cache-control':'private, no-store, max-age=0',
+          'pragma':'no-cache',
+          'x-content-type-options':'nosniff',
+          'x-robots-tag':'noindex, nofollow',
+          'content-security-policy':"default-src 'none'; sandbox",
+        },
+      });
+    }
     if (method === 'GET' && (path === '/api/timeline' || path === '/api/alerts')) {
       const query = requestURL.searchParams;
       const allowed = path === '/api/timeline'
@@ -392,6 +422,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if (cause instanceof ReportAccountNotFound) return error(404,'NOT_FOUND');
+    if (cause instanceof ReportTooLargeError) return error(413,'REPORT_TOO_LARGE');
+    if (cause instanceof ReportReconciliationError) return error(409,'REPORT_NOT_CONSISTENT');
     if (cause instanceof TypeError || cause instanceof RangeError) return error(400, 'INVALID_REQUEST');
     if (cause instanceof Error && cause.message.startsWith('Idempotency key reused')) return error(409, 'CONFLICT');
     return error(409, 'OPERATION_REJECTED');
