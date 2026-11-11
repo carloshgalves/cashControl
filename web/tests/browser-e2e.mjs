@@ -83,7 +83,7 @@ async function main(){
     await page.getByRole('button',{name:'Criar conta',exact:true}).click();
     await page.getByRole('button',{name:/Transferir/}).click();
     await page.getByLabel('Valor (R$)').fill('25,00');
-    await page.getByLabel('Conta de origem').selectOption({label:/Carteira principal/});
+    await page.getByLabel('Conta de origem').selectOption({index:0});
     await page.getByLabel('Conta de destino').selectOption({label:'Reserva'});
     await page.getByLabel('Data efetiva').fill('2026-11-10');
     await page.getByRole('button',{name:'Confirmar registro'}).click();
