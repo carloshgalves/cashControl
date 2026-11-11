@@ -92,5 +92,13 @@ export async function fetchReport(
     ? head.length >= 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04
     : head.length >= 5 && head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46 && head[4] === 0x2d;
   if (!valid) throw new ReportDownloadError('O arquivo gerado está incompleto ou não corresponde ao formato escolhido.');
-  return { blob, filename: 'cashcontrol-historico-' + filters.from + '-a-' + filters.to + '.' + format };
+  const scope = filters.accountId ? 'conta-selecionada' : 'todas-contas';
+  const labels: Record<ReportFilters['status'], string> = {
+    all: 'todas-situacoes', realized: 'realizados', pending: 'pendentes',
+    overdue: 'atrasados', planned: 'previstos', canceled: 'cancelados',
+  };
+  // A non-identifying nonce prevents collisions across private account reports.
+  const filename = 'cashcontrol-historico-' + filters.from + '-a-' + filters.to +
+    '-' + labels[filters.status] + '-' + scope + '-' + crypto.randomUUID().slice(0, 8) + '.' + format;
+  return { blob, filename };
 }

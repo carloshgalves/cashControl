@@ -22,6 +22,7 @@ const kinds:Record<TimelineKind,string>={
 const statuses:Record<string,string>={
  realized:'Realizado',planned:'Previsto',pending:'Pendente',
  overdue:'Atrasado',canceled:'Cancelado',
+ all:'Todas as situações',
 };
 const addSafe=(a:number,b:number):number=>{
  if(!Number.isSafeInteger(a)||!Number.isSafeInteger(b)||!Number.isSafeInteger(a+b)){
@@ -97,14 +98,18 @@ export async function makeReport(
   status:statuses[e.status]??'Não classificado',
   account:humanAccount(e),amountCents:e.amountCents,
  }));
- const filename='cashcontrol_'+options.from+'_'+options.to+'.'+options.format;
+ const label=statuses[options.status];
+ if(!label)throw new TypeError('Invalid report status');
+ const scopeSlug=options.accountId?'conta-selecionada':'todas-contas';
+ // Distinguish private downloads without exposing account names or IDs.
+ const filename='cashcontrol_'+options.from+'_'+options.to+'_'+options.status+'_'+scopeSlug+'_'+crypto.randomUUID().slice(0,8)+'.'+options.format;
  const contentType=options.format==='xlsx'
   ?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   :'application/pdf';
  let bytes:Uint8Array;
  if(options.format==='pdf'){
   const report:PdfReport={
-   ...options,scope,rows,totals:total,
+   ...options,status:label,scope,rows,totals:total,
   };
   try { bytes=createPdf(report); }
   catch(cause){
@@ -118,7 +123,7 @@ export async function makeReport(
    [t('Período: '+options.from+' a '+options.to)],
    [t('Referência (data civil): '+options.asOf)],
    [t('Escopo: '+scope)],
-   [t('Filtro de situação: '+options.status)],
+   [t('Filtro de situação: '+label)],
    [t('Eventos confirmados e obrigações pendentes separados; não somar transferências ou obrigações como receita.')],
    heads.map(v=>t(v,1)),
   ];

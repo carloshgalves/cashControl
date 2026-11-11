@@ -49,7 +49,7 @@ test('verified download uses same-origin cookies, never caches, and checks binar
     return response('xlsx');
   };
   const result=await fetchReport(filters,'xlsx',undefined,fake);
-  assert.equal(result.filename,'cashcontrol-historico-2026-11-01-a-2026-11-30.xlsx');
+  assert.match(result.filename,/^cashcontrol-historico-2026-11-01-a-2026-11-30-todas-situacoes-todas-contas-[a-f0-9]{8}\.xlsx$/);
   assert.equal(result.blob.size,xlsxBytes.length);
   assert.equal(requests.length,1);
   assert.equal(requests[0].opts.credentials,'same-origin');
@@ -85,4 +85,16 @@ test('abort prevents download and is not incorrectly converted into a recoverabl
   await assert.rejects(fetchReport(filters,'pdf',controller.signal,async()=>{
     throw new DOMException('Aborted','AbortError');
   }),error=>error.name==='AbortError');
+});
+
+test('filenames distinguish date, status and scope without account identifiers',async()=>{
+  const accountId='11111111-1111-4111-8111-111111111111';
+  const all=await fetchReport(filters,'pdf',undefined,async()=>response('pdf'));
+  const scoped=await fetchReport({...filters,status:'overdue',accountId},'pdf',undefined,async()=>response('pdf'));
+  assert.match(all.filename,/todas-situacoes-todas-contas-/);
+  assert.match(scoped.filename,/atrasados-conta-selecionada-/);
+  assert(!scoped.filename.includes(accountId));
+  assert.notEqual(all.filename,scoped.filename);
+  const repeat=await fetchReport({...filters,status:'overdue',accountId},'pdf',undefined,async()=>response('pdf'));
+  assert.notEqual(repeat.filename,scoped.filename);
 });
