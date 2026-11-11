@@ -1,5 +1,5 @@
 name: financial-timeline-local-d1-browser
-# One-shot verification for C2. No deploy, no remote D1, no long-lived secrets.
+# Second pass after Node 22 strip-only TypeScript constructor compatibility fix; local only.
 on:
   push:
     branches: [feat/financial-timeline-alerts]
