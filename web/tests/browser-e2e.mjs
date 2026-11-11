@@ -188,7 +188,7 @@ async function main(){
     await page.getByRole('region',{name:'Detalhes do evento'})
       .getByRole('button',{name:/Registrar pagamento efetivo/}).click();
     await page.locator('#entry-amount').fill('10,00');
-    await page.getByRole('button',{name:'Registrar pagamento efetivo'}).click();
+    await page.getByRole('dialog').getByRole('button',{name:'Registrar pagamento efetivo',exact:true}).click();
     await page.getByRole('dialog').waitFor({state:'hidden'});
     const trailAfter=await page.request.get(APP+'/api/trail?from=2026-11-01&to=2026-11-30&asOf='+ref);
     assert.equal(trailAfter.status(),200);
