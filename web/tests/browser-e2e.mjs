@@ -62,7 +62,7 @@ async function main(){
     log('First empty state creates general wallet without any bank');
     await page.getByRole('button',{name:/Criar minha primeira carteira/}).click();
     await page.getByLabel('Nome da conta').fill('Carteira principal');
-    await page.getByLabel('Saldo inicial').fill('100,00');
+    await page.locator('#entry-amount').fill('100,00');
     await page.getByRole('button',{name:'Criar conta',exact:true}).click();
     await page.getByText('R$ 100,00').first().waitFor();
     log('Real income and expense appear in chart and change current balance');
@@ -87,7 +87,7 @@ async function main(){
     await page.getByRole('button',{name:'Minhas contas'}).click();
     await page.getByRole('button',{name:/Adicionar conta/}).click();
     await page.getByLabel('Nome da conta').fill('Reserva');
-    await page.getByLabel('Saldo inicial').fill('0,00');
+    await page.locator('#entry-amount').fill('0,00');
     await page.getByRole('button',{name:'Criar conta',exact:true}).click();
     await page.getByRole('button',{name:/Transferir/}).click();
     await page.getByLabel('Valor (R$)').fill('25,00');
