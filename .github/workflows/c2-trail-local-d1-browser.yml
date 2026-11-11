@@ -1,5 +1,5 @@
 name: c2-trail-local-d1-browser
-# Disposable branch-scoped validation, no hosted Cloudflare deployment or secrets.
+# Second full run after sanitizing fixture keys; disposable local D1 only.
 on:
   push:
     branches: [feat/c2-financial-trail-alerts]
