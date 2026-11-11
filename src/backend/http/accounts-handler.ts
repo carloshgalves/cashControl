@@ -273,9 +273,11 @@ export async function handleFinancialHttp(
       };
       const allowed=method==='GET'&&
         (purchaseList!==null||invoiceList!==null)?new Set(['limit','offset']):new Set<string>();
-      for(const key of requestURL.searchParams.keys()){
-        if(!allowed.has(key)||requestURL.searchParams.getAll(key).length!==1)return error(400,'INVALID_FILTER');
-      }
+      let unknownQuery=false;
+      requestURL.searchParams.forEach((_value,key)=>{
+        if(!allowed.has(key)||requestURL.searchParams.getAll(key).length!==1)unknownQuery=true;
+      });
+      if(unknownQuery)return error(400,'INVALID_FILTER');
       if (method==='GET' && path==='/api/cards')return json({cards:await listCards(database,actor)});
       if (method==='GET' && cardMatch){
         const card=await getCard(database,actor,cardMatch[1]!);

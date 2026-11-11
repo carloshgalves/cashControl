@@ -74,11 +74,11 @@ function month(year:number, m:number):string{
  return String(y).padStart(4,'0')+'-'+String(mo).padStart(2,'0');
 }
 function shiftMonth(cycle:string,delta:number):string{
- const [y,m]=cycle.split('-').map(Number);
+ const [y=0,m=0]=cycle.split('-').map(Number);
  return month(y,m+delta);
 }
 function monthDays(cycle:string):number{
- const [y,m]=cycle.split('-').map(Number);
+ const [y=0,m=0]=cycle.split('-').map(Number);
  return new Date(Date.UTC(y,m,0)).getUTCDate();
 }
 function clampDay(cycle:string,day:number):number{return Math.min(day,monthDays(cycle));}
