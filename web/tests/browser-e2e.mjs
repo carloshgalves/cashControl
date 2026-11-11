@@ -144,6 +144,65 @@ async function main(){
     assert.equal(d.cashFlow.netCents,600);
     assert.equal(d.balances.totalCents,10600);
     assert.equal(d.obligations.outstandingCents,3000);
+    log('C2 financial trail: real D-5 alert, planned/pending states and calendar interactions');
+    const fiveDays = new Date();
+    fiveDays.setDate(fiveDays.getDate()+5);
+    const dueFive = fiveDays.toISOString().slice(0,10);
+    const dueBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
+      idempotencyKey:'ui-trail-bill-'+tag,title:'Energia teste D5',amount:'45.00',dueOn:dueFive,
+    }});
+    assert.equal(dueBill.status(),201,'Trail bill fixture must be persisted');
+    const cancelBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
+      idempotencyKey:'ui-trail-cancel-'+tag,title:'Compra cancelada C2',amount:'19.00',dueOn:'2026-11-24',
+    }});
+    assert.equal(cancelBill.status(),201);
+    const cancelId=(await cancelBill.json()).obligation.obligationId;
+    assert.equal((await page.request.post(APP+'/api/obligations/'+cancelId+'/cancel',{
+      headers:{origin:APP},data:{idempotencyKey:'ui-trail-cancel-action-'+tag,canceledOn:'2026-11-11',reason:'Desistência'},
+    })).status(),201);
+    await page.reload();
+    await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor();
+    await page.getByRole('button',{name:'Trilha financeira'}).click();
+    await page.getByRole('heading',{name:/O que aconteceu/}).waitFor();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).click();
+    await page.getByRole('heading',{name:'Energia teste D5'}).waitFor();
+    await page.getByText('Compromisso futuro. Ainda não é uma saída de caixa realizada.').waitFor();
+    await page.getByRole('button',{name:'Registrar pagamento efetivo'}).click();
+    await page.locator('#entry-amount').fill('10,00');
+    await page.getByRole('dialog').getByRole('button',{name:'Registrar pagamento efetivo'}).click();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).waitFor();
+    const afterTrailPayment=await page.request.get(APP+'/api/alerts?asOf=2026-11-11');
+    assert.equal(afterTrailPayment.status(),200);
+    const electricity=(await afterTrailPayment.json()).alerts.find(x=>x.title==='Energia teste D5');
+    assert.equal(electricity?.outstandingCents,3500,'partial settlement must update alert amount');
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Cancelados'}).click();
+    await page.getByRole('heading',{name:'Compra cancelada C2'}).waitFor();
+    await page.getByText('Sem débito').first().waitFor();
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Realizados'}).click();
+    await page.getByText('Serviço avulso').first().waitFor();
+    log('C2 trail browser passed: alerts, contextual payment, cancellation, status filter');
+    log('C2 pagination regression: due alert must remain actionable beyond first 30 chronological events');
+    const ownAccounts=(await (await page.request.get(APP+'/api/accounts')).json()).accounts;
+    const primary=ownAccounts.find(account=>account.name==='Carteira principal');
+    assert(primary,'Expected first account for 31-event timeline pagination fixture');
+    for(let i=0;i<32;i++){
+      const response=await page.request.post(APP+'/api/movements',{
+        headers:{origin:APP},
+        data:{idempotencyKey:'ui-c2-page-'+tag+'-'+String(i).padStart(3,'0'),
+          accountId:primary.accountId,direction:'expense',amount:'0.01',
+          method:'pix',description:'History '+i,occurredOn:'2026-11-01'},
+      });
+      assert.equal(response.status(),201,'Cannot create paginated ledger fixture');
+    }
+    await page.reload();
+    await page.getByRole('button',{name:'Trilha financeira'}).click();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).click();
+    await page.getByRole('heading',{name:'Energia teste D5'}).waitFor();
+    await page.getByRole('button',{name:'Registrar pagamento efetivo'}).waitFor();
+    assert((await page.getByRole('button',{name:'Carregar mais eventos'}).count())>0,
+      'Fixture must push due event past initial timeline page');
+    log('C2_PINNED_ALERT_PAGINATION_PASS: selected alert is payable beyond first page');
+
     log('Logout revokes actual session');
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
@@ -159,6 +218,12 @@ async function main(){
     await page.getByRole('heading',{name:'Agenda de compromissos'}).waitFor();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
     assert.equal(overflow,false,'Mobile layout overflows viewport');
+    await page.getByRole('navigation',{name:'Navegação principal'}).getByRole('button',{name:'Trilha'}).click();
+    await page.getByRole('heading',{name:/O que aconteceu/}).waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2),false,
+      'Financial timeline layout overflows narrow mobile viewport');
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Previstos'}).click();
+    await page.getByText('Nenhum evento corresponde a este período e filtro.').waitFor();
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).status(),401,

@@ -22,8 +22,9 @@ As DEC registram **o que foi aprovado** em discussões de produto. Não são ADR
 - DEC-001 a DEC-014: registradas e aprovadas nos limites indicados em cada decisão.
 - Especificação funcional e tickets: **publicados**, com implementação incremental P0/P1/P2; decisões técnicas ainda dependem da Issue #8.
 - Backend financeiro (contas, movimentos, obrigações, transferências e reembolsos): implementado e testado em D1 local.
-- Dashboard backend: [PR #36](https://github.com/carloshgalves/cashControl/pull/36), em Draft, com dados em centavos e isolamento por usuário.
-- Dashboard interativo React/Vite: branch empilhada `feat/interactive-dashboard-ui`, aprovada visualmente e validada no Chromium; aguarda revisão/merge manual.
+- Dashboard backend: [PR #36](https://github.com/carloshgalves/cashControl/pull/36), mesclada, com dados em centavos e isolamento por usuário.
+- Dashboard interativo React/Vite: [PR #37](https://github.com/carloshgalves/cashControl/pull/37), mesclada, aprovada visualmente e validada no Chromium.
+- Trilha financeira e avisos in-app D-10/D-5: Issue #17 implementada na branch `feat/financial-timeline-alerts`, em revisão/PR, sem merge automático.
 - Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo.
 
 O documento de decisões é a fonte atual das regras de negócio acordadas. Mudanças devem ser explicitadas e vinculadas à decisão que modificam.
@@ -39,3 +40,9 @@ Testes: `npm run ui:check`, `npm run ui:test`, `npm run ui:build`, `npm test`. `
 Relatório de revisão da interface: [INTERACTIVE-UI-REVIEW.md](docs/implementation/INTERACTIVE-UI-REVIEW.md).
 
 **Não use contas nem dados financeiros reais neste ambiente de homologação.** Não existe deploy de produção nesta entrega.
+
+## Trilha financeira (C2)
+
+A tela **Trilha financeira** reúne os eventos confirmados, obrigações pendentes, cancelamentos e avisos de vencimento. Os indicadores D-10/D-5 são calculados a partir da **data local do navegador** e do saldo pendente efetivo no D1. Não há pagamentos automáticos, previsões fictícias ou notificações externas.
+
+Endpoints de leitura `GET /api/timeline?from=2026-11-01&to=2026-11-30&asOf=2026-11-11` e `GET /api/alerts?asOf=2026-11-11`. Os dois exigem sessão Better Auth e usam paginação/limites. Testes locais: `npm test`, `npm run ui:test`, `npm run ui:build` e `npm run ui:e2e` (com D1 local e Chromium). Relatório: [FINANCIAL-TIMELINE-REVIEW.md](docs/implementation/FINANCIAL-TIMELINE-REVIEW.md), evidência [GitHub Actions #43064714180](https://github.com/carloshgalves/cashControl/actions/runs/43064714180).
