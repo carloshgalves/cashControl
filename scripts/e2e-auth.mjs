@@ -292,6 +292,73 @@ async function main(){
   assert.equal(raceAfterRefund.data.obligation.outstandingCents,7500);
   console.log('COMPENSATIONS_E2E_PASS: cancellation leaves cash unchanged, linked refund restores cash and net obligation');
   console.log('COMPENSATIONS_RACE_PASS: concurrent reimbursements preserve original payment cap and atomicity');
+  // Dashboard C1: verify aggregation against real ledger endpoints on local D1.
+  const periodDashboard='/api/dashboard?from=2026-11-10&to=2026-11-10';
+  status(await request(periodDashboard),401,'dashboard rejects anonymous request');
+  const forged=await request(periodDashboard+'&ownerId=bob',{cookie:a.cookie});
+  assert.equal(forged.status,400,'unsupported ownerId filter must not be silently ignored');
+  const dashA=await request(periodDashboard,{cookie:a.cookie});
+  status(dashA,200,'A dashboard under its own verified session');
+  const dashB=await request(periodDashboard,{cookie:b.cookie});
+  status(dashB,200,'B independent dashboard');
+  const historical=await request('/api/dashboard?from=2026-10-01&to=2026-10-31',{cookie:a.cookie});
+  status(historical,200,'historical period filter');
+  const d=dashA.data.dashboard;
+  assert.equal(d.currency,'BRL');
+  assert.equal(d.balances.basis,'current');
+  assert.equal(d.cashFlow.basis,'confirmed_occurrence_in_period');
+  assert.equal(d.obligations.basis,'current_outstanding');
+  assert.equal(d.expectations.status,'not_implemented');
+  assert.equal(historical.data.dashboard.cashFlow.netCents,0,'October cannot include November posted cash');
+  assert.equal(historical.data.dashboard.balances.totalCents,d.balances.totalCents,
+    'selecting historical cash period must not misrepresent current bank balance');
+  const listedAccounts=await request('/api/accounts',{cookie:a.cookie});
+  status(listedAccounts,200,'A account list for reconciliation');
+  assert.equal(d.balances.totalCents,
+    listedAccounts.data.accounts.reduce((sum,row)=>sum+row.balanceCents,0),
+    'dashboard consolidated balance diverged from account ledger');
+  const ledger=await request('/api/movements?limit=100',{cookie:a.cookie});
+  status(ledger,200,'A independent cash ledger for reconciliation');
+  const during=ledger.data.movements.filter(x=>x.occurredOn==='2026-11-10');
+  const actualIncome=during.filter(x=>x.direction==='income'&&x.eventKind!=='refund')
+    .reduce((sum,x)=>sum+x.amountCents,0);
+  const actualRefund=during.filter(x=>x.direction==='income'&&x.eventKind==='refund')
+    .reduce((sum,x)=>sum+x.amountCents,0);
+  const actualExpense=during.filter(x=>x.direction==='expense')
+    .reduce((sum,x)=>sum+x.amountCents,0);
+  assert.equal(d.cashFlow.incomeCents,actualIncome,'refund inflates earned income');
+  assert.equal(d.cashFlow.refundsCents,actualRefund,'refunds missing or double-counted');
+  assert.equal(d.cashFlow.expensesCents,actualExpense,'expenses missing or transfer counted');
+  assert.equal(d.cashFlow.netCents,actualIncome+actualRefund-actualExpense,
+    'real net cashflow mismatch');
+  const billList=await request('/api/obligations?limit=100',{cookie:a.cookie});
+  status(billList,200,'A independent obligation ledger');
+  const pending=billList.data.obligations.filter(x=>x.outstandingCents>0);
+  assert.equal(d.obligations.outstandingCents,
+    pending.reduce((sum,x)=>sum+x.outstandingCents,0),'obligations outstanding mismatch');
+  assert.equal(d.obligations.openCount,pending.length,'obligation count mismatch');
+  assert.equal(d.obligations.dueInPeriodCents,0,'November 10 must exclude November 25 due bills');
+  const dashAllMonth=await request('/api/dashboard?from=2026-11-01&to=2026-11-30',{cookie:a.cookie});
+  status(dashAllMonth,200,'November dashboard range');
+  assert.equal(dashAllMonth.data.dashboard.obligations.dueInPeriodCents,
+    pending.filter(x=>x.dueOn>='2026-11-01'&&x.dueOn<='2026-11-30')
+      .reduce((sum,x)=>sum+x.outstandingCents,0));
+  assert.equal(dashAllMonth.data.dashboard.obligations.dueInPeriodCount,
+    pending.filter(x=>x.dueOn>='2026-11-01'&&x.dueOn<='2026-11-30').length);
+  const aid=new Set(d.balances.accounts.map(x=>x.accountId));
+  assert(dashB.data.dashboard.balances.accounts.every(x=>!aid.has(x.accountId)),
+    'Bob dashboard leaked Alice account');
+  assert.equal(dashB.data.dashboard.cashFlow.incomeCents,0,
+    'Bob dashboard inherited Alice income');
+  assert.equal(dashB.data.dashboard.cashFlow.expensesCents,0,
+    'Bob dashboard inherited Alice expense');
+  assert.equal(dashB.data.dashboard.obligations.outstandingCents,0,
+    'Bob dashboard inherited Alice obligations');
+  const invalidDash=await request('/api/dashboard?from=2026-02-29&to=2026-11-30',{cookie:a.cookie});
+  assert.equal(invalidDash.status,400,'invalid dates must be rejected');
+  const duplicatedDash=await request('/api/dashboard?from=2026-11-01&from=2026-10-01&to=2026-11-30',{cookie:a.cookie});
+  assert.equal(duplicatedDash.status,400,'duplicate query ranges must be rejected');
+  console.log('DASHBOARD_E2E_PASS: real two-user D1 ledger reconciliation, exact centavos, refunds separated, current balance independent of period');
   status(await request('/api/auth/sign-out',{method:'POST',cookie:a.cookie,body:{}}),200,'signout A');
   status(await request('/api/accounts',{cookie:a.cookie}),401,'A cookie revoked');
   status(await request('/api/accounts',{cookie:b.cookie}),200,'B session unaffected');

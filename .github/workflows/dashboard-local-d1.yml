@@ -1,0 +1,54 @@
+name: dashboard-local-d1
+# Fourth regression: TypeScript-compatible unsupported filter validation; no deploy.
+on:
+  push:
+    branches: [feat/dashboard-read-model]
+    paths: [.github/workflows/dashboard-local-d1.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cashcontrol-dashboard-local-d1
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Full TypeScript validation
+        run: npm run typecheck
+      - name: Check integration script syntax
+        run: node --check scripts/e2e-auth.mjs
+      - name: Run all domain, security and dashboard tests
+        run: npm test
+      - name: Configure disposable local D1 and test-only Better Auth
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply all versioned migrations to local D1
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start real Workerd/Hono/Better Auth with local D1
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-dashboard-worker.log 2>&1 &
+          echo $! > /tmp/cashcontrol-dashboard.pid
+      - name: Reconcile dashboard with two real authenticated users
+        run: node scripts/e2e-auth.mjs
+      - name: Stop local Worker
+        if: always()
+        run: |
+          if [ -f /tmp/cashcontrol-dashboard.pid ]; then kill "$(cat /tmp/cashcontrol-dashboard.pid)" 2>/dev/null || true; fi
+      - name: No production deployment
+        if: always()
+        run: echo "NO_DEPLOY; NO_REMOTE_D1; CLOUD_CPU_NOT_MEASURED"
