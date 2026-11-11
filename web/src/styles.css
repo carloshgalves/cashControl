@@ -197,7 +197,7 @@ small,.muted { color: var(--secondary); }
 .auth-form .primary-btn { margin-top: 14px; }
 .helper { margin-top: 23px; color: var(--secondary); font-size: 12px; line-height: 1.6; }
 .loading-mark { color: var(--green); font-weight: 760; }
-.mobile-nav,.mobile-register { display: none; }
+.mobile-nav,.mobile-register,.mobile-logout { display: none; }
 @media (max-width:1160px) {
   .grid-main { grid-template-columns: minmax(0,1fr); }
   .right-column { grid-template-columns: 1fr; }
@@ -210,6 +210,7 @@ small,.muted { color: var(--secondary); }
   .topbar { margin-bottom: 25px; }
   .security-chip { font-size: 10px; padding: 7px 10px; }
   .register-btn { display: none; }
+  .mobile-logout { display: grid; place-items: center; border: 1px solid #d7e3d7; background: white; border-radius: 10px; width: 36px; height: 36px; color: var(--green); }
   .heading { flex-wrap: wrap; align-items: start; gap: 16px; }
   .heading h1 { font-size: 35px; }
   .heading p { font-size: 12px; }
