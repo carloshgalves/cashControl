@@ -71,7 +71,6 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
   const [events,setEvents]=useState<TrailEvent[]>([]);
   const [hasMore,setHasMore]=useState(false);
   const [selectedId,setSelectedId]=useState<string|null>(null);
-  const [selectedAlert,setSelectedAlert]=useState<DueAlert|null>(null);
   const [selectedDay,setSelectedDay]=useState<string|null>(null);
   const [busy,setBusy]=useState(false);
   const [moreBusy,setMoreBusy]=useState(false);
@@ -92,7 +91,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       .then(page=>{
         if(controller.signal.aborted)return;
         setEvents(page.events);setHasMore(page.hasMore);
-        setSelectedId(current=>page.events.some(e=>e.id===current)||current===selectedAlert?.obligationId
+        setSelectedId(current=>page.events.some(e=>e.id===current)||alerts.some(a=>a.obligationId===current)
           ? current : page.events[0]?.id??null);
       }).catch(e=>{if(!controller.signal.aborted)setError(errorMessage(e));})
       .finally(()=>{if(!controller.signal.aborted)setBusy(false);});
@@ -128,8 +127,9 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
     }catch(e){setAlertError(errorMessage(e));}
     finally{setAlertMoreBusy(false);}
   }
+  const selectedAlert=alerts.find(alert=>alert.obligationId===selectedId);
   const selected=events.find(event=>event.id===selectedId) ??
-    (selectedAlert?.obligationId===selectedId ? {
+    (selectedAlert ? {
       id:selectedAlert.obligationId,kind:'obligation' as const,
       status:'pending' as const,timing:'scheduled' as const,
       date:selectedAlert.dueOn,title:selectedAlert.title,
@@ -137,7 +137,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       obligationId:selectedAlert.obligationId,relatedMovementId:null,
     } : null);
   const selectAlert=(alert:DueAlert)=>{
-    setFilter('all');setSelectedAlert(alert);setSelectedId(alert.obligationId);
+    setFilter('all');setSelectedId(alert.obligationId);
     if(month!==alert.dueOn.slice(0,7))onChangeMonth(alert.dueOn.slice(0,7));
   };
   const dayEvents=events.filter(e=>e.date===selectedDay);
@@ -181,7 +181,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       <div className="trail-filters" role="group" aria-label="Filtrar eventos">
         {FILTERS.map(option=><button key={option.id} type="button"
           aria-pressed={filter===option.id} className={filter===option.id?'active':''}
-          onClick={()=>{setFilter(option.id);setSelectedDay(null);setSelectedAlert(null);}}>{option.label}</button>)}
+          onClick={()=>{setFilter(option.id);setSelectedDay(null);setSelectedId(null);}}>{option.label}</button>)}
       </div>
     </div>
     <section className="trail-rail-box" aria-label="Cronologia financeira interativa">
@@ -194,7 +194,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       {highlighted.length>0&&<div className="trail-scroll" tabIndex={0} aria-label="Eventos; role horizontalmente para explorar">
         <div className="trail-rail">
           {highlighted.map(e=><button key={e.kind+'-'+e.id} type="button"
-            aria-pressed={selected?.id===e.id} onClick={()=>{setSelectedId(e.id);setSelectedAlert(null);setSelectedDay(e.date);}}
+            aria-pressed={selected?.id===e.id} onClick={()=>{setSelectedId(e.id);setSelectedDay(e.date);}}
             className={'trail-event '+e.status+(selected?.id===e.id?' selected':'')}>
             <small>{friendlyDate(e.date)}</small><span className="trail-node" aria-hidden="true"/>
             <span className="trail-type">{statusNames[e.status]}</span>
@@ -242,7 +242,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
               onClick={()=>{
                 setSelectedDay(date);
                 const first=events.find(e=>e.date===date);
-                if(first){setSelectedId(first.id);setSelectedAlert(null);}
+                if(first)setSelectedId(first.id);
               }} className={(selectedDay===date?'selected ':'')+(dueDays.has(date)?'has-due':'')}>
               <strong>{i+1}</strong><i aria-hidden="true"/></button>;
           })}
