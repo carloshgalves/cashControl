@@ -1,5 +1,5 @@
 name: oneoff-frontend-lock
-# Revalidate updated Vite 8 typed proxy then pin dependencies; remove afterward.
+# Third pass: money preview fixture corrected; lock only if full suite passes.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
