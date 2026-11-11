@@ -94,6 +94,7 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
   const [alertLoading, setAlertLoading] = useState(true);
   const [error, setError] = useState('');
   const generation = useRef(0);
+  const pendingAlertSelection = useRef<string | null>(null);
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
@@ -105,6 +106,10 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
       .then(page => {
         if (controller.signal.aborted || current !== generation.current) return;
         setEvents(page.events); setHasMore(page.hasMore);
+        if (pendingAlertSelection.current) {
+          setSelectedId(pendingAlertSelection.current);
+          pendingAlertSelection.current = null;
+        }
       })
       .catch(cause => {
         if (controller.signal.aborted || current !== generation.current) return;
@@ -157,9 +162,13 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
   }
   function selectAlert(alert: DueAlert) {
     if (alert.dueOn >= from && alert.dueOn <= to) {
-      setFilter('all'); setSelectedDay(null);
-      const matching = events.find(event => event.obligationId === alert.obligationId && event.kind === 'obligation');
-      if (matching) setSelectedId(matching.id);
+      const targetId = 'obligation:' + alert.obligationId;
+      setSelectedDay(null);
+      setSelectedId(targetId);
+      if (filter !== 'all' || loading) {
+        pendingAlertSelection.current = targetId;
+        setFilter('all');
+      }
     } else {
       const el = document.getElementById('trail-attention');
       el?.scrollIntoView({ block:'nearest', behavior:'smooth' });
