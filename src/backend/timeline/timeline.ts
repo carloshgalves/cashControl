@@ -17,7 +17,8 @@ export interface TimelineEvent {
 }
 export interface TimelineOptions {
   from: string; to: string; asOf: string;
-  status?: 'all' | TimelineStatus;
+  // HTTP supplies a string; checkOptions rejects all unknown statuses.
+  status?: string;
   limit?: number; offset?: number;
 }
 export interface TimelinePage {
@@ -66,7 +67,7 @@ export function validateDate(value: unknown): asserts value is string {
 export function daysBetween(asOf: string, dueOn: string): number {
   validateDate(asOf); validateDate(dueOn);
   const timestamp = (value: string) => {
-    const [y, m, d] = value.split('-').map(Number);
+    const y = Number(value.slice(0,4)), m = Number(value.slice(5,7)), d = Number(value.slice(8,10));
     return Date.UTC(y, m - 1, d);
   };
   return (timestamp(dueOn) - timestamp(asOf)) / 86_400_000;
