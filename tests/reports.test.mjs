@@ -143,7 +143,7 @@ test('PDF is paginated readable WinAnsi and has byte-correct cross-reference',()
  const file=await makeReport(db,actor('alice'),options({format:'pdf'}));
  assert.equal(file.contentType,'application/pdf');
  const text=pdfText(file.bytes);
- for(const label of ['cashControl','Relat','2026-11-01','Mercado','Internet','Transfer','Reembolso','Pendente']) {
+ for(const label of ['cashControl','Relat','2026-11-01','Mercado','Internet','Transfer','Reembolso','Previsto']) {
   assert(text.includes(label),label+' is missing in PDF');
  }
  assert(!text.includes('SIGILO BOB'));
