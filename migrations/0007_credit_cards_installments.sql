@@ -42,7 +42,7 @@ CREATE TABLE credit_installments (
  installment_no INTEGER NOT NULL CHECK(installment_no BETWEEN 1 AND 60),
  card_id TEXT NOT NULL,
  invoice_cycle TEXT NOT NULL CHECK(length(invoice_cycle)=7 AND invoice_cycle GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
- due_on TEXT NOT NULL CHECK(length(due_on)=10 AND due_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'),
+ due_on TEXT NOT NULL CHECK(length(due_on)=10 AND due_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
  amount_cents INTEGER NOT NULL CHECK(amount_cents BETWEEN 1 AND 9000000000000),
  PRIMARY KEY(owner_user_id,purchase_id,installment_no),
  FOREIGN KEY(owner_user_id,purchase_id) REFERENCES credit_purchases(owner_user_id,purchase_id) ON DELETE RESTRICT,
