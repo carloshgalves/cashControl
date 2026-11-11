@@ -82,7 +82,7 @@ test('obligations are scheduled, never confirmed cash, with pending vs overdue s
   await bill(db,'alice','Atrasada','2026-11-10','25');
   const view=await listTrail(db,actor('alice'),range());
   assert.deepEqual(view.events.filter(x=>x.kind==='obligation').map(x=>[x.title,x.status]),
-    [['Próxima','pending'],['Atrasada','overdue']]);
+    [['Atrasada','overdue'],['Próxima','pending']]);
   assert(view.events.filter(x=>x.kind==='obligation').every(x=>x.timing==='scheduled'));
   assert.equal(view.events.reduce((sum,x)=>sum+(x.status==='realized'?x.amountCents:0),0),0);
 }));
