@@ -74,8 +74,9 @@ export function createPdf(report:PdfReport):Uint8Array {
  };
  let current=begin(),y=361,count=0;
  for(const row of report.rows){
-  const lines=wrap(row.title,46,9);
-  const accountLines=wrap(row.account,19,8);
+  // Widths are PDF points, not character counts; preserve readable titles.
+  const lines=wrap(row.title,251,9);
+  const accountLines=wrap(row.account,101,8);
   const height=Math.max(26,Math.max(lines.length,accountLines.length)*11+7);
   if(y-height<55){
    pages.push(current);current=begin();y=361;count=0;
