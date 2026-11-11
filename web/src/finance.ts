@@ -7,7 +7,7 @@ export const money = (cents: number): string => {
 export function parseAmount(value: string): string | null {
   const raw = value.trim().replace(/^R\$\s*/, '').replace(/\s/g, '');
   let normal: string;
-  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(raw)) normal = raw.replace(/\./g, '').replace(',', '.');
+  if (/^[1-9]\d{0,2}(?:\.\d{3})+(?:,\d{1,2})?$/.test(raw)) normal = raw.replace(/\./g, '').replace(',', '.');
   else if (/^\d{1,9}(?:[,.]\d{1,2})?$/.test(raw)) normal = raw.replace(',', '.');
   else return null;
   const [whole, fraction = ''] = normal.split('.');
