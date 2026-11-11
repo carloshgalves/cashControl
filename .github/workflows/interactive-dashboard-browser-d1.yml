@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# Merge gate: rerun complete Chromium/D1 suite after PR #36 merge and BRL zero-prefix fix; no deploy.
+# Merge gate re-run: install headless Chromium shell without redundant apt dependencies; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
@@ -31,7 +31,7 @@ jobs:
           npm test
           node --check web/tests/browser-e2e.mjs
       - name: Install Chromium for actual UX interactions
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --only-shell chromium
       - name: Prepare disposable local D1 configuration
         shell: bash
         run: |
