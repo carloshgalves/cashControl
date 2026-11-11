@@ -12,11 +12,9 @@ export default defineConfig({
       '/api': {
         target: worker,
         changeOrigin: true,
-        configure(proxy) {
-          proxy.on('proxyReq', (request, incoming) => {
-            if (incoming.headers.origin) request.setHeader('Origin', worker);
-          });
-        },
+        // Vite 8 uses a different proxy implementation. Explicit headers work
+        // with its typed proxy option and keep local POSTs same-origin to Worker.
+        headers: { Origin: worker },
       },
     },
   },
