@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
@@ -226,6 +227,52 @@ async function main(){
       .accounts.find(account=>account.name==='Carteira principal')?.accountId;
     assert(aliceAccountForExport);
     log('C3_REAL_AUTH_EXPORT_PASS: both file types, disposition and no-store');
+    log('C3 UI export: actual buttons produce browser downloads with selected filters');
+    await page.getByRole('button',{name:'Exportar relatório'}).click();
+    const exportDialog=page.getByRole('dialog',{name:'Exportar histórico'});
+    await exportDialog.waitFor();
+    assert.equal(await exportDialog.getByLabel('Data inicial').inputValue(),'2026-11-01');
+    assert.equal(await exportDialog.getByLabel('Data final').inputValue(),'2026-11-30');
+    assert.equal(await exportDialog.getByLabel('Situação dos eventos').inputValue(),'all');
+    const [actualXlsx]=await Promise.all([
+      page.waitForEvent('download'),
+      exportDialog.getByRole('button',{name:'Baixar XLSX'}).click(),
+    ]);
+    assert.match(actualXlsx.suggestedFilename(),/\.xlsx$/);
+    assert.equal((await readFile(await actualXlsx.path())).subarray(0,2).toString(),'PK');
+    await exportDialog.getByLabel('Conta ou escopo').selectOption(aliceAccountForExport);
+    await exportDialog.getByLabel('Situação dos eventos').selectOption('realized');
+    const observed=[];
+    page.on('request',req=>{
+      if(req.url().includes('/api/reports/export?'))observed.push(req.url());
+    });
+    const [actualPdf]=await Promise.all([
+      page.waitForEvent('download'),
+      exportDialog.getByRole('button',{name:'Baixar PDF'}).click(),
+    ]);
+    assert.match(actualPdf.suggestedFilename(),/\.pdf$/);
+    assert.equal((await readFile(await actualPdf.path())).subarray(0,5).toString(),'%PDF-');
+    const selectedURL=new URL(observed.at(-1));
+    assert.equal(selectedURL.searchParams.get('status'),'realized');
+    assert.equal(selectedURL.searchParams.get('accountId'),aliceAccountForExport);
+    assert.equal(selectedURL.searchParams.get('from'),'2026-11-01');
+    assert.equal(selectedURL.searchParams.get('to'),'2026-11-30');
+    await page.route('**/api/reports/export?**',route=>route.fulfill({
+      status:413, contentType:'application/json',body:JSON.stringify({error:'REPORT_TOO_LARGE'}),
+    }));
+    await exportDialog.getByRole('button',{name:'Baixar PDF'}).click();
+    await exportDialog.getByRole('alert').getByText(/eventos demais/).waitFor();
+    assert.equal(await exportDialog.getByRole('button',{name:'Baixar XLSX'}).isEnabled(),true);
+    await page.unroute('**/api/reports/export?**');
+    await exportDialog.getByRole('button',{name:'Fechar exportação'}).click();
+    await page.getByRole('button',{name:'Trilha financeira'}).click();
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'})
+      .getByRole('button',{name:'Atrasados'}).click();
+    await page.getByRole('button',{name:'Exportar filtro'}).click();
+    assert.equal(await page.getByRole('dialog',{name:'Exportar histórico'})
+      .getByLabel('Situação dos eventos').inputValue(),'overdue');
+    await page.getByRole('button',{name:'Fechar exportação'}).click();
+    log('C3_UI_DOWNLOAD_PASS: clickable XLSX/PDF, filter preservation, 413 and valid signatures');
     log('Logout revokes actual session');
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
@@ -241,11 +288,27 @@ async function main(){
     assert.equal(bobExport.status(),200);
     assert(!(await bobExport.body()).includes(Buffer.from('Serviço avulso')),
       'No Alice finance in Bob XLSX');
+    await page.getByRole('button',{name:'Exportar relatório'}).click();
+    const bobDialog=page.getByRole('dialog',{name:'Exportar histórico'});
+    assert.equal(await bobDialog.getByLabel('Conta ou escopo').locator('option').count(),1,
+      'Bob must not receive Alice account as a selectable export filter');
+    const [bobFile]=await Promise.all([
+      page.waitForEvent('download'),
+      bobDialog.getByRole('button',{name:'Baixar XLSX'}).click(),
+    ]);
+    assert.equal((await readFile(await bobFile.path())).subarray(0,2).toString(),'PK');
+    await bobDialog.getByRole('button',{name:'Fechar exportação'}).click();
+    log('C3_UI_TENANT_PASS: Bob sees only his empty export options');
 
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')
       .then(r=>r.json())).dashboard.balances.totalCents,0);
     log('Mobile width: navigation and no horizontal overflow');
     await page.setViewportSize({width:390,height:844});
+    await page.getByRole('button',{name:'Exportar relatório'}).click();
+    await page.getByRole('dialog',{name:'Exportar histórico'}).waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2),false,
+      'C3 export modal must not overflow mobile viewport');
+    await page.getByRole('button',{name:'Fechar exportação'}).click();
     await page.getByRole('navigation',{name:'Navegação principal'}).getByRole('button',{name:'Agenda'}).click();
     await page.getByRole('heading',{name:'Agenda de compromissos'}).waitFor();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);

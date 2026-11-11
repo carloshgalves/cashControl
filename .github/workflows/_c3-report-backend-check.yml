@@ -1,9 +1,9 @@
-name: c3-backend-private-export-review
+name: c3-complete-private-export-review
 # Review cycle 4: large multipage PDF fails explicitly with HTTP 413; local D1 only.
 on:
   push:
     branches: [feat/c3-financial-export-backend]
-    paths: [.github/workflows/_c3-report-backend-check.yml]
+    # Every review push runs the full vertical validation.
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,7 +13,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 17
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -49,7 +49,7 @@ jobs:
           echo $! > /tmp/c3-worker.pid
           npm run ui:preview > /tmp/c3-vite.log 2>&1 &
           echo $! > /tmp/c3-vite.pid
-      - name: Real Chromium end-to-end with authenticated XLSX and PDF
+      - name: Real Chromium end-to-end with UI downloads, verified cookies and D1
         run: npm run ui:e2e
       - name: Dispose test sessions and processes
         if: always()
