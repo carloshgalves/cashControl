@@ -342,7 +342,14 @@ export function App() {
   async function signOut() {
     if (signingOut) return;
     setSigningOut(true);
-    try { await logout(); setSession(null); setData(null); setModal(null); setError(''); }
+    try {
+      await logout();
+      setSession(null); setData(null); setModal(null); setError('');
+      // Never retain the previous user's navigation, selected account/day or
+      // financial context when a different session signs in on this tab.
+      setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
+      setSelectedAccount(null); setSelectedDay(null); setExpandedBill(null); setNotice('');
+    }
     catch (cause) { setNotice(readableError(cause)); }
     finally { setSigningOut(false); }
   }
@@ -358,7 +365,11 @@ export function App() {
   function moveTo(next: View) { setView(next); setNotice(''); }
 
   if (session === undefined) return <div className="auth-page"><div className="loading-mark" role="status">Verificando sessão segura…</div></div>;
-  if (!session) return <Login onSuccess={value => { setSession(value); setError(''); }}/>;
+  if (!session) return <Login onSuccess={value => {
+    setView('overview'); setSelectedAccount(null); setSelectedDay(null);
+    setExpandedBill(null); setWeek(1); setMonth(today().slice(0,7));
+    setSession(value); setData(null); setError(''); setNotice('');
+  }}/>;
 
   return <div className="app-shell">
     <aside className="sidebar">
