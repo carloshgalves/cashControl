@@ -1,5 +1,5 @@
 name: c2-trail-local-d1-browser
-# Third full run: scope modal confirmation button to actual dialog; D1 is local only.
+# Fourth full run: diagnose second-user session after successful trail payment; local D1 only.
 on:
   push:
     branches: [feat/c2-financial-trail-alerts]
