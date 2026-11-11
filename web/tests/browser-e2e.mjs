@@ -215,6 +215,8 @@ async function main(){
     assert.equal((await page.request.get(APP+'/api/accounts')).status(),401);
     log('Bob sees only their own empty finances after login');
     await loginUi(page,users[1]);
+    assert(!(await page.locator('body').innerText()).includes('Registro confirmado e atualizado.'),
+      'Prior account notice leaked across authenticated user switch');
     await page.getByText('Nenhuma conta cadastrada.').waitFor();
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')
       .then(r=>r.json())).dashboard.balances.totalCents,0);
