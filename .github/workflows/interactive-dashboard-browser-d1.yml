@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# One-shot branch-only review. No deployment and no production Cloudflare account.
+# Browser re-review 2: exact locator for opening balance; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
