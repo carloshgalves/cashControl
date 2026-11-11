@@ -40,8 +40,14 @@ async function loginUi(page,user) {
 }
 async function modal(page, mode) {
   await page.getByRole('button',{name:'Registrar',exact:true}).click();
+  await page.getByRole('dialog').waitFor({state:'visible'});
   if(mode==='income')await page.getByRole('button',{name:'Entrada',exact:true}).click();
   if(mode==='transfer')await page.getByRole('button',{name:'Transferência',exact:true}).click();
+  try { await page.locator('#entry-amount').waitFor({state:'visible'}); }
+  catch(error) {
+    console.log('UI_DIAG_MODAL:',JSON.stringify(await page.locator('body').innerText()).slice(-1400));
+    throw error;
+  }
 }
 async function monthNovember(page) {
   await page.getByText('novembro de 2026',{exact:true}).first().waitFor();
@@ -69,13 +75,13 @@ async function main(){
     await page.getByText('R$ 100,00').first().waitFor();
     log('Real income and expense appear in chart and change current balance');
     await modal(page,'income');
-    await page.getByLabel('Valor (R$)').fill('31,01');
+    await page.locator('#entry-amount').fill('31,01');
     await page.getByLabel('Descrição').fill('Serviço avulso');
     await page.getByLabel('Data efetiva').fill('2026-11-10');
     await page.getByRole('button',{name:'Confirmar registro'}).click();
     await page.getByText('R$ 131,01').first().waitFor();
     await modal(page,'expense');
-    await page.getByLabel('Valor (R$)').fill('10,01');
+    await page.locator('#entry-amount').fill('10,01');
     await page.getByLabel('Descrição').fill('Mercado');
     await page.getByLabel('Data efetiva').fill('2026-11-10');
     await page.getByRole('button',{name:'Confirmar registro'}).click();
@@ -92,7 +98,7 @@ async function main(){
     await page.locator('#entry-amount').fill('0,00');
     await page.getByRole('button',{name:'Criar conta',exact:true}).click();
     await page.getByRole('button',{name:/Transferir/}).click();
-    await page.getByLabel('Valor (R$)').fill('25,00');
+    await page.locator('#entry-amount').fill('25,00');
     await page.getByLabel('Conta de origem').selectOption({index:0});
     await page.getByLabel('Conta de destino').selectOption({label:'Reserva'});
     await page.getByLabel('Data efetiva').fill('2026-11-10');
@@ -115,7 +121,7 @@ async function main(){
     await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor();
     await page.getByRole('button',{name:/Internet.*R\$.*45,00/}).click();
     await page.getByRole('button',{name:/Registrar pagamento/}).click();
-    await page.getByLabel('Valor (R$)').fill('15,00');
+    await page.locator('#entry-amount').fill('15,00');
     await page.getByRole('button',{name:'Registrar pagamento efetivo'}).click();
     await page.getByText('R$ 30,00').first().waitFor();
     const dashboard=await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30');
