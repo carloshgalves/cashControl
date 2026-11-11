@@ -1,0 +1,64 @@
+name: c3-complete-private-export-review
+# Review cycle 4: large multipage PDF fails explicitly with HTTP 413; local D1 only.
+on:
+  push:
+    branches: [feat/c3-financial-export-backend]
+    # Every review push runs the full vertical validation.
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: c3-financial-export-local
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typechecks and complete finance backend regression
+        run: |
+          npm run typecheck
+          npm run ui:check
+          npm run ui:build
+          npm test
+          npm run ui:test
+          node --check web/tests/browser-e2e.mjs
+      - name: Prepare Chromium headless browser
+        run: npx playwright install --only-shell chromium
+      - name: Configure temporary local database
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply D1 migrations locally
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start local Worker and existing production UI
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/c3-worker.log 2>&1 &
+          echo $! > /tmp/c3-worker.pid
+          npm run ui:preview > /tmp/c3-vite.log 2>&1 &
+          echo $! > /tmp/c3-vite.pid
+      - name: Real Chromium end-to-end with UI downloads, verified cookies and D1
+        run: npm run ui:e2e
+      - name: Dispose test sessions and processes
+        if: always()
+        shell: bash
+        run: |
+          for pid in /tmp/c3-worker.pid /tmp/c3-vite.pid; do
+            if [ -f "$pid" ]; then kill "$(cat "$pid")" 2>/dev/null || true; fi
+          done
+          rm -f .dev.vars
+      - name: Confirm no external integration
+        if: always()
+        run: echo "NO_DEPLOY, NO_REMOTE_D1, NO_REAL_USER_DATA"
