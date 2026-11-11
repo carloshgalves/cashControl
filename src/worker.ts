@@ -119,5 +119,15 @@ for (const path of ['/api/timeline', '/api/alerts']) {
   });
 }
 
+// Private, read-only XLSX/PDF export: identical verified Better Auth boundary.
+app.all('/api/reports/export', (c) => {
+  const auth = createWorkerAuth(c.env);
+  return handleFinancialHttp(
+    c.req.raw, c.env.DB as unknown as FinancialDatabase,
+    async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
+    configuredOrigin(c.env),
+  );
+});
+
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
