@@ -170,7 +170,7 @@ async function main(){
     await page.getByRole('button',{name:'Registrar pagamento efetivo'}).click();
     await page.locator('#entry-amount').fill('10,00');
     await page.getByRole('dialog').getByRole('button',{name:'Registrar pagamento efetivo'}).click();
-    await page.getByRole('heading',{name:'Energia teste D5'}).waitFor();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).waitFor();
     const afterTrailPayment=await page.request.get(APP+'/api/alerts?asOf=2026-11-11');
     assert.equal(afterTrailPayment.status(),200);
     const electricity=(await afterTrailPayment.json()).alerts.find(x=>x.title==='Energia teste D5');
