@@ -9,8 +9,10 @@ export interface ReportFilters {
   accountId?: string;
 }
 export class ReportDownloadError extends Error {
-  constructor(message: string, public readonly status = 0) {
+  readonly status: number;
+  constructor(message: string, status = 0) {
     super(message);
+    this.status = status;
     this.name = 'ReportDownloadError';
   }
 }
