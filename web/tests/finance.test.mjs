@@ -68,7 +68,7 @@ test('preview does not mutate source balances or allow invalid value to be displ
   const account={accountId:'a',name:'Banco',balanceCents:2500};
   assert.equal(accountBalancePreview(account,'10,05','expense'),1495);
   assert.equal(accountBalancePreview(account,'10,05','income'),3505);
-  assert.equal(accountBalancePreview(account,'100,00','transfer'),-750);
+  assert.equal(accountBalancePreview(account,'100,00','transfer'),-7500);
   assert.equal(accountBalancePreview(account,'12,345','expense'),null);
   assert.equal(account.balanceCents,2500);
 });
