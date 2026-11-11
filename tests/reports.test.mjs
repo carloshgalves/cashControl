@@ -267,6 +267,17 @@ test('large exports fail closed before rendering instead of silently truncating'
  const qs='?from=2026-11-01&to=2026-11-30&asOf=2026-11-11&format=pdf';
  assert.equal((await http(db,'/api/reports/export'+qs,'session=alice')).status,413);
 }));
+test('valid but extremely tall PDF returns explicit 413 instead of a truncated file',()=>using(async db=>{
+ const stmt=db.raw.prepare(
+  'INSERT INTO financial_obligations (owner_user_id, obligation_id, creation_key, title, total_cents, due_on, created_at) VALUES (?,?,?,?,?,?,?)');
+ for(let i=0;i<455;i++)stmt.run('alice',randomUUID(),'huge-pdf-'+i,'😀'.repeat(120),
+   100,'2026-11-20','2026-11-01T00:00:00Z');
+ await assert.rejects(()=>makeReport(db,actor('alice'),options({format:'pdf'})),ReportTooLargeError);
+ const query='?from=2026-11-01&to=2026-11-30&asOf=2026-11-11&format=pdf';
+ assert.equal((await http(db,'/api/reports/export'+query,'session=alice')).status,413);
+ assert.equal(db.raw.prepare('SELECT count(*) AS n FROM posted_cash_movements').get().n,0);
+}));
+
 test('PDF and XLSX generation never modifies any financial movement',()=>using(async db=>{
  await fixture(db);
  const before=db.raw.prepare('SELECT count(*) AS n FROM posted_cash_movements').get().n;
