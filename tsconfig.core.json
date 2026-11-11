@@ -8,7 +8,8 @@
     "src/backend/transfers/**/*.ts",
     "src/backend/compensations/**/*.ts",
     "src/backend/dashboard/**/*.ts",
-    "src/backend/timeline/**/*.ts"
+    "src/backend/timeline/**/*.ts",
+    "src/backend/reports/**/*.ts"
   ],
   "exclude": [
     "src/backend/auth/**/*.ts",
