@@ -1,5 +1,5 @@
 name: financial-timeline-local-d1-browser
-# Definitive C2 gate: real mobile trail interactions plus all finance regressions; no deploy.
+# Re-review: resolve selected D-5 alerts beyond first 30 paginated events; real Chromium, no deploy.
 on:
   push:
     branches: [feat/financial-timeline-alerts]
