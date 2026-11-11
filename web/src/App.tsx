@@ -339,10 +339,17 @@ export function App() {
   const calendarDays = new Date(Date.UTC(year,monthNumber,0)).getUTCDate();
   const emptySlots = new Date(Date.UTC(year,monthNumber-1,1)).getUTCDay();
 
+  function resetWorkspace() {
+    // Financial data are fetched from the current verified session, but view
+    // selection and notices must not survive an identity switch either.
+    setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
+    setSelectedDay(null); setSelectedAccount(null); setExpandedBill(null);
+    setModal(null); setNotice(''); setError(''); setData(null);
+  }
   async function signOut() {
     if (signingOut) return;
     setSigningOut(true);
-    try { await logout(); setSession(null); setData(null); setModal(null); setError(''); }
+    try { await logout(); resetWorkspace(); setSession(null); }
     catch (cause) { setNotice(readableError(cause)); }
     finally { setSigningOut(false); }
   }
@@ -358,7 +365,7 @@ export function App() {
   function moveTo(next: View) { setView(next); setNotice(''); }
 
   if (session === undefined) return <div className="auth-page"><div className="loading-mark" role="status">Verificando sessão segura…</div></div>;
-  if (!session) return <Login onSuccess={value => { setSession(value); setError(''); }}/>;
+  if (!session) return <Login onSuccess={value => { resetWorkspace(); setSession(value); }}/>;
 
   return <div className="app-shell">
     <aside className="sidebar">
