@@ -80,9 +80,9 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
   const [alertError,setAlertError]=useState('');
   const [alertBusy,setAlertBusy]=useState(false);
   const [alertMoreBusy,setAlertMoreBusy]=useState(false);
+  const [trailRetry,setTrailRetry]=useState(0);
+  const [alertRetry,setAlertRetry]=useState(0);
   const accountsById=useMemo(()=>new Map(accounts.map(account=>[account.accountId,account.name])),[accounts]);
-  const [bounds]=useState(()=>'');
-  void bounds;
 
   useEffect(()=>{
     const controller=new AbortController();
@@ -95,7 +95,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       }).catch(e=>{if(!controller.signal.aborted)setError(errorMessage(e));})
       .finally(()=>{if(!controller.signal.aborted)setBusy(false);});
     return ()=>controller.abort();
-  },[month,asOf,filter,refreshKey]);
+  },[month,asOf,filter,refreshKey,trailRetry]);
 
   useEffect(()=>{
     const controller=new AbortController();
@@ -105,7 +105,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       .catch(e=>{if(!controller.signal.aborted)setAlertError(errorMessage(e));})
       .finally(()=>{if(!controller.signal.aborted)setAlertBusy(false);});
     return ()=>controller.abort();
-  },[asOf,refreshKey]);
+  },[asOf,refreshKey,alertRetry]);
 
   async function more() {
     if(moreBusy||!hasMore)return;
@@ -133,7 +133,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
   };
   const dayEvents=events.filter(e=>e.date===selectedDay);
   const todayVisible=asOf>=monthBounds(month).from&&asOf<=monthBounds(month).to;
-  const highlighted=events.slice(0,30);
+  const highlighted=events;
   const monthNum=Number(month.slice(5,7)),year=Number(month.slice(0,4));
   const monthDays=new Date(Date.UTC(year,monthNum,0)).getUTCDate();
   const offsetDay=new Date(Date.UTC(year,monthNum-1,1)).getUTCDay();
@@ -152,7 +152,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
         <p>Avisos no aplicativo. Nenhum débito automático ou notificação externa.</p></div>
       <div className="trail-alert-stack">
         {alertBusy&&<p role="status">Verificando vencimentos…</p>}
-        {alertError&&<p role="alert">{alertError} <button onClick={()=>moreAlerts()}>Tentar novamente</button></p>}
+        {alertError&&<p role="alert">{alertError} <button onClick={()=>setAlertRetry(x=>x+1)}>Tentar novamente</button></p>}
         {!alertBusy&&!alertError&&alerts.length===0&&<p className="trail-empty-alert">Nenhum compromisso pendente vence nos próximos 10 dias.</p>}
         {alerts.map(alert=><button key={alert.obligationId} type="button"
           className="trail-alert" onClick={()=>selectAlert(alert)}>
@@ -180,7 +180,7 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
         {todayVisible&&<span className="trail-today">Hoje · dia {asOf.slice(-2)}</span>}</div>
       {busy&&<p role="status" className="trail-empty">Carregando eventos…</p>}
       {error&&<p role="alert" className="trail-empty">{error}
-        <button className="trail-more" onClick={()=>{setFilter('all');}}>Mostrar todos</button></p>}
+        <button className="trail-more" onClick={()=>setTrailRetry(x=>x+1)}>Tentar novamente</button></p>}
       {!busy&&!error&&highlighted.length===0&&<p className="trail-empty">Nenhum evento encontrado neste período e filtro.</p>}
       {highlighted.length>0&&<div className="trail-scroll" tabIndex={0} aria-label="Eventos; role horizontalmente para explorar">
         <div className="trail-rail">
@@ -202,8 +202,6 @@ export function TrailView({month,accounts,refreshKey,onPay,onChangeMonth}:{
       </div>
       {hasMore&&<button type="button" className="trail-more" disabled={moreBusy} onClick={more}>
         {moreBusy?'Carregando…':'Carregar mais eventos →'}</button>}
-      {events.length>30&&<p className="trail-small">A trilha horizontal mostra os 30 primeiros eventos carregados.
-        Use os filtros ou altere o mês para refinar o período.</p>}
     </section>
     <div className="trail-below">
       <section aria-label="Detalhes do evento" className="trail-detail">
