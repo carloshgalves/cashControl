@@ -91,7 +91,16 @@ function readZip(bytes) {
    const extra=buf.readUInt16LE(i+28);
    const name=buf.subarray(i+30,i+30+namesize).toString('utf8');
    const start=i+30+namesize+extra;
-   entries.set(name,buf.subarray(start,start+size).toString('utf8'));
+   const payload=buf.subarray(start,start+size);
+   // CRC implemented independently of the production lookup-table algorithm.
+   let crc=0xffffffff;
+   for(const byte of payload){
+     crc^=byte;
+     for(let bit=0;bit<8;bit++)crc=(crc&1)?((crc>>>1)^0xedb88320):(crc>>>1);
+   }
+   assert.equal((crc^0xffffffff)>>>0,buf.readUInt32LE(i+14),'Corrupted ZIP entry: '+name);
+   assert.equal(buf.readUInt16LE(i+12),0x21,'Invalid DOS ZIP date');
+   entries.set(name,payload.toString('utf8'));
    i=start+size;
  }
  assert.equal(buf.readUInt32LE(i),0x02014b50,'OOXML central directory required');
@@ -191,6 +200,17 @@ test('Excel-like formula strings are treated exclusively as user text',()=>using
  assert(sheet.includes('=HYPERLINK(&quot;https://evil.test&quot;,&quot;click&quot;)'));
  assert(!/<f(?: |>)/.test(sheet),'Formula cell was accidentally created');
 }));
+test('accented Portuguese and non-WinAnsi glyphs are not silently destroyed',()=>using(async db=>{
+ const a=await account(db,'alice');
+ await movement(db,'alice',a.accountId,'income','Ação café 😀','5');
+ const xlsx=readZip((await makeReport(db,actor('alice'),options())).bytes)
+   .get('xl/worksheets/sheet1.xml');
+ assert(xlsx.includes('Ação café 😀'),'XLSX should retain complete Unicode');
+ const pdf=await makeReport(db,actor('alice'),options({format:'pdf'}));
+ const text=pdfText(pdf.bytes);
+ assert(text.includes('Ação café [U+1F600]'),'PDF should show unrepresentable glyph by code point');
+}));
+
 test('PDF paginates without losing names or payments across page boundaries',()=>using(async db=>{
  const a=await account(db,'alice');
  for(let i=0;i<85;i++){
