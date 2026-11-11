@@ -270,7 +270,7 @@ test('large exports fail closed before rendering instead of silently truncating'
 test('valid but extremely tall PDF returns explicit 413 instead of a truncated file',()=>using(async db=>{
  const stmt=db.raw.prepare(
   'INSERT INTO financial_obligations (owner_user_id, obligation_id, creation_key, title, total_cents, due_on, created_at) VALUES (?,?,?,?,?,?,?)');
- for(let i=0;i<455;i++)stmt.run('alice',randomUUID(),'huge-pdf-'+i,'😀'.repeat(120),
+ for(let i=0;i<800;i++)stmt.run('alice',randomUUID(),'huge-pdf-'+i,'😀'.repeat(120),
    100,'2026-11-20','2026-11-01T00:00:00Z');
  await assert.rejects(()=>makeReport(db,actor('alice'),options({format:'pdf'})),ReportTooLargeError);
  const query='?from=2026-11-01&to=2026-11-30&asOf=2026-11-11&format=pdf';
@@ -285,4 +285,84 @@ test('PDF and XLSX generation never modifies any financial movement',()=>using(a
  await makeReport(db,actor('alice'),options({format:'pdf'}));
  await assert.rejects(()=>makeReport(db,actor('alice'),options({from:'2026-11-31'})));
  assert.equal(db.raw.prepare('SELECT count(*) AS n FROM posted_cash_movements').get().n,before);
+}));
+
+
+function pdfRuns(bytes) {
+ const pdf=Buffer.from(bytes).toString('latin1');
+ return [...pdf.matchAll(/BT \/F([12]) ([\d.]+) Tf [\d.]+ [\d.]+ [\d.]+ rg 1 0 0 1 ([\d.]+) ([\d.]+) Tm <([0-9A-F]*)> Tj ET/g)]
+  .map(([,font,size,x,y,hex])=>({
+   font:Number(font),size:Number(size),x:Number(x),y:Number(y),
+   text:Buffer.from(hex,'hex').toString('latin1'),
+  }));
+}
+
+test('adversarial W120 titles and W80 account names stay in PDF columns and page bounds',()=>using(async db=>{
+ const title='W'.repeat(120),name='W'.repeat(80);
+ const a=await account(db,'alice',name,'100');
+ await movement(db,'alice',a.accountId,'income',title,'8');
+ const pdf=await makeReport(db,actor('alice'),options({format:'pdf'}));
+ const runs=pdfRuns(pdf.bytes);
+ assert(runs.length>15,'PDF text operands should be parsable independently');
+ const titleRuns=runs.filter(row=>row.x===216&&/^W+$/.test(row.text));
+ const accountRuns=runs.filter(row=>row.x===549&&/^W+$/.test(row.text));
+ assert.equal(titleRuns.reduce((n,row)=>n+row.text.length,0),120,'title glyphs must not be lost');
+ assert.equal(accountRuns.reduce((n,row)=>n+row.text.length,0),80,'account glyphs must not be lost');
+ for(const row of titleRuns){
+  assert(row.x+row.text.length*0.944*row.size<=216+238+0.001,
+   'Helvetica W title intrudes into the situation column');
+ }
+ for(const row of accountRuns){
+  assert(row.x+row.text.length*0.944*row.size<=549+128+0.001,
+   'Helvetica W account intrudes into the amount column');
+ }
+ const metadata=runs.filter(row=>row.x===38);
+ assert.equal(metadata.reduce((sum,row)=>sum+(row.text.match(/W/g)||[]).length,0),80,
+   'long account in header must not be clipped or omitted');
+ for(const row of metadata.filter(row=>row.text.includes('W'))){
+  const wWidth=(row.text.match(/W/g)||[]).length*0.944*row.size;
+  assert(row.x+wWidth<=807,'long account header clipped off page');
+ }
+ for(const row of runs){
+  assert(row.x>=35&&row.x<=807,'PDF text starts outside horizontal page bounds');
+  assert(row.y>=26&&row.y<585,'PDF text starts outside vertical page bounds');
+ }
+ assert(pdfText(pdf.bytes).includes('Todas as situações'),
+  'PDF scope must show a localized filter description');
+}));
+
+test('very long Unicode descriptions preserve intact codepoint markers across continuation pages',async()=>{
+ const {createPdf}=await import('../src/backend/reports/pdf.ts');
+ const pdf=createPdf({
+  from:'2026-11-01',to:'2026-11-30',asOf:'2026-11-11',status:'Todas as situações',
+  scope:'Todas as contas e obrigações',
+  rows:[{date:'2026-11-11',kind:'Receita',title:'😀'.repeat(120),
+   status:'Realizado',account:'W'.repeat(80),amountCents:12345}],
+  totals:{incomeCents:12345,expensesCents:0,refundsCents:0,transfersCents:0,
+   outstandingCents:0,netCents:12345},
+ });
+ const text=pdfText(pdf);
+ const markers=text.match(/\[U\+1F600\]/g)??[];
+ assert.equal(markers.length,120,'all unknown glyphs must remain identifiable after line wraps');
+ assert((Buffer.from(pdf).toString('latin1').match(/\/Type \/Page \/Parent/g)??[]).length>1,
+  'long records should continue on a new page instead of overflowing');
+ const runs=pdfRuns(pdf).filter(row=>row.x===216&&row.text.includes('[U+1F600]'));
+ assert(runs.length>1);
+ assert(runs.every(row=>row.x===216&&row.y>=26&&row.y<=361),
+  'Unicode content must be placed in the description column');
+});
+
+test('PDF/XLSX metadata localize filter and both filenames distinguish scope without PII',()=>using(async db=>{
+ const a=await account(db,'alice','Extrato particular','100');
+ await movement(db,'alice',a.accountId,'income','Crédito','5');
+ const all=await makeReport(db,actor('alice'),options());
+ const scoped=await makeReport(db,actor('alice'),options({accountId:a.accountId,status:'realized'}));
+ assert.match(all.filename,/^cashcontrol_2026-11-01_2026-11-30_all_todas-contas_[0-9a-f]{8}\.xlsx$/);
+ assert.match(scoped.filename,/^cashcontrol_2026-11-01_2026-11-30_realized_conta-selecionada_[0-9a-f]{8}\.xlsx$/);
+ assert(!scoped.filename.includes(a.accountId));
+ assert(!scoped.filename.includes(a.name));
+ assert.notEqual(scoped.filename,all.filename);
+ assert.match(readZip(all.bytes).get('xl/worksheets/sheet1.xml'),/Filtro de situação: Todas as situações/);
+ const pdf=await makeReport(db,actor('alice'),options({status:'realized',format:'pdf'}));
+ assert(pdfText(pdf.bytes).includes('Situação: Realizado'));
 }));
