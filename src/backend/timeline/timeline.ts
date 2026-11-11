@@ -147,7 +147,8 @@ const EVENT_SQL = [
   ' account_id, obligation_id, related_id',
   ' FROM all_events WHERE event_date BETWEEN ? AND ?',
   " AND (? = 'all' OR event_status = ?)",
-  ' ORDER BY event_date DESC, created_at DESC, event_id DESC',
+  // The approved rail reads left-to-right chronologically within the month.
+  ' ORDER BY event_date ASC, created_at ASC, event_id ASC',
   ' LIMIT ? OFFSET ?',
 ].join('\n');
 
