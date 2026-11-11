@@ -1,5 +1,5 @@
 name: c2-trail-local-d1-browser
-# Fifth full run: confirm per-session UI reset, no prior-account notice, and A/B isolation.
+# Final UX re-review: ascending timeline, unique headline and fresh selected-alert amounts.
 on:
   push:
     branches: [feat/c2-financial-trail-alerts]
