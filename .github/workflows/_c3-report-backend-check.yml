@@ -1,5 +1,5 @@
 name: c3-backend-private-export-review
-# Review cycle 2: correct PDF title wrapping and future obligation test expectation.
+# Review cycle 3: ZIP CRC and Unicode glyph preservation; same local-only validation.
 on:
   push:
     branches: [feat/c3-financial-export-backend]
