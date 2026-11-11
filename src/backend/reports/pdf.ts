@@ -105,7 +105,7 @@ export function createPdf(report:PdfReport):Uint8Array {
  }
  if(report.rows.length===0)current+=textLine('Sem eventos para o período e filtro selecionados.',43,340,11);
  pages.push(current);
- if(pages.length>90)throw new RangeError('PDF page limit exceeded');
+ if(pages.length>450)throw new RangeError('PDF page limit exceeded');
  const objects:string[]=[
   '<< /Type /Catalog /Pages 2 0 R >>',
   '', // pages object, populated after all page references
