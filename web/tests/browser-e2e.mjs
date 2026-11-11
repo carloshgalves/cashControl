@@ -36,7 +36,16 @@ async function loginUi(page,user) {
   await page.getByLabel('E-mail').fill(user.email);
   await page.getByLabel('Senha').fill(user.password);
   await page.getByRole('button',{name:'Entrar com segurança'}).click();
-  await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor();
+  try { await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor(); }
+  catch(error) {
+    // No passwords or authentication cookies in CI logs.
+    console.log('UI_DIAGNOSTIC_LOGIN:',JSON.stringify({
+      body:(await page.locator('body').innerText()).slice(0,1800),
+      heading:await page.getByRole('heading').allTextContents(),
+      alert:await page.getByRole('alert').allTextContents(),
+    }));
+    throw error;
+  }
 }
 async function modal(page, mode) {
   await page.getByRole('button',{name:'Registrar',exact:true}).click();
