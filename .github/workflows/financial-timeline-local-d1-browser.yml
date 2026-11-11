@@ -1,5 +1,5 @@
 name: financial-timeline-local-d1-browser
-# Fourth pass: reset transient financial navigation between A/B sessions; no deploy.
+# Final C2 gate: chronological rail, calendar/detail consistency and cross-month alerts; local D1 only.
 on:
   push:
     branches: [feat/financial-timeline-alerts]
