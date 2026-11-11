@@ -4,6 +4,7 @@ import { readExportTimeline, validateDate, ReportTooLargeError,
   type TimelineEvent, type TimelineKind } from '../timeline/timeline.ts';
 import { createXlsx, type SheetCell } from './xlsx.ts';
 import { createPdf, type PdfReport } from './pdf.ts';
+import { xlsxMoneyCell } from './money.ts';
 
 export type ReportFormat = 'xlsx' | 'pdf';
 export interface ReportOptions {
@@ -55,7 +56,6 @@ export interface Download {
  bytes:Uint8Array;format:ReportFormat;filename:string;contentType:string;rows:number;
 }
 const t=(value:string,style=0):SheetCell=>({type:'text',value,style});
-const n=(value:number,style=2):SheetCell=>({type:'number',value,style});
 export async function makeReport(
  db:FinancialDatabase, actor:AuthenticatedActor, options:ReportOptions,
 ):Promise<Download> {
@@ -124,12 +124,12 @@ export async function makeReport(
    [t('Referência (data civil): '+options.asOf)],
    [t('Escopo: '+scope)],
    [t('Filtro de situação: '+label)],
-   [t('Eventos confirmados e obrigações pendentes separados; não somar transferências ou obrigações como receita.')],
+   [t('Eventos confirmados e obrigações pendentes separados; transferências não são receita. Valores muito altos são texto monetário para preservar centavos.')],
    heads.map(v=>t(v,1)),
   ];
   for(const e of rows)sheet.push([
    t(e.date),t(e.kind),t(e.title),t(e.status),t(e.account),
-   n(e.amountCents/100),
+   xlsxMoneyCell(e.amountCents),
   ]);
   sheet.push([]);
   for(const [label,value] of [
@@ -140,7 +140,7 @@ export async function makeReport(
    ['Obrigações ainda pendentes no período (não debitadas)',total.outstandingCents],
    ['Fluxo líquido efetivo (não é saldo patrimonial)',total.netCents],
   ] as const){
-   sheet.push([t(label,1),t(''),t(''),t(''),t(''),n(value/100)]);
+   sheet.push([t(label,1),t(''),t(''),t(''),t(''),xlsxMoneyCell(value)]);
   }
   bytes=createXlsx({name:'Histórico financeiro',rows:sheet,columnWidths:[16,17,43,17,40,24]});
  }

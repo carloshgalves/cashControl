@@ -4,6 +4,8 @@
  * for ASCII; all other mapped WinAnsi glyphs receive a conservative >=1.015 em
  * reservation so that no character can intrude into the next column.
  */
+import { formatBRL } from './money.ts';
+
 const winAnsi=new Map<number,number>([
  [0x20ac,0x80],[0x201a,0x82],[0x0192,0x83],[0x201e,0x84],
  [0x2026,0x85],[0x2020,0x86],[0x2021,0x87],[0x02c6,0x88],
@@ -38,27 +40,36 @@ function textWidthSafe(text:string,size:number,bold=false):number{
 function wrapSafe(value:string,maxWidth:number,size:number,bold=false):string[]{
  if(!Number.isFinite(maxWidth)||maxWidth<20)throw new RangeError('Invalid PDF width');
  const input=pdfSafe(value),out:string[]=[];
- let line='',width=0;
- const flush=()=>{if(line.trim())out.push(line.trimEnd());line='';width=0;};
- // Unsupported Unicode glyphs become visible [U+XXXX] codes. Keep each
- // marker atomic when wrapping, so a page break cannot corrupt its meaning.
- for(const char of input.match(/\[U\+[0-9A-F]+\]|./gu)??[]){
-  const glyphWidth=textWidthSafe(char,size,bold);
-  if(width+glyphWidth<=maxWidth+0.001){line+=char;width+=glyphWidth;continue;}
-  const lastSpace=line.lastIndexOf(' ');
-  if(lastSpace>0){
-   out.push(line.slice(0,lastSpace).trimEnd());
-   line=(line.slice(lastSpace+1)+char).trimStart();
-   width=textWidthSafe(line,size,bold);
-  }else{
-   flush();
-   if(char!==' '){line=char;width=glyphWidth;}
+ // Treat Unicode fallback markers as single tokens: [U+1F600] must never be
+ // split at a page/column boundary. All other characters are individual glyphs.
+ const glyphs=input.match(/\[U\+[0-9A-F]+\]|./gu)??[];
+ let line:string[]=[];let width=0;
+ const measure=(parts:string[])=>parts.reduce((sum,part)=>sum+textWidthSafe(part,size,bold),0);
+ const emit=(parts:string[])=>{
+  const text=parts.join('').trimEnd();
+  if(text)out.push(text);
+ };
+ for(const glyph of glyphs){
+  const glyphWidth=textWidthSafe(glyph,size,bold);
+  if(glyphWidth>maxWidth+0.001)throw new RangeError('PDF glyph exceeds cell width');
+  // After splitting at a word boundary, its remaining suffix may still be
+  // too wide. Repeat the fit check until it fits, falling back to per-glyph
+  // splitting for unbroken words. Each iteration strictly shrinks the line.
+  while(width+glyphWidth>maxWidth+0.001){
+   if(!line.length)throw new RangeError('PDF glyph exceeds cell width');
+   const lastSpace=line.lastIndexOf(' ');
+   if(lastSpace>0){
+    emit(line.slice(0,lastSpace));
+    line=line.slice(lastSpace+1);
+    width=measure(line);
+   }else{
+    emit(line);line=[];width=0;
+   }
   }
-  // A single PDF glyph cannot exceed the smallest supported column; this
-  // assertion also makes accidental future font changes fail closed.
-  if(width>maxWidth+0.001)throw new RangeError('PDF glyph exceeds cell width');
+  if(glyph===' '&&!line.length)continue; // No leading spaces on wrapped lines.
+  line.push(glyph);width+=glyphWidth;
  }
- flush();
+ emit(line);
  return out.length?out:[''];
 }
 function hexText(safeText:string):string{
@@ -74,8 +85,7 @@ function textLine(safeText:string,x:number,y:number,size=10,bold=false,color='0.
  return 'BT /'+(bold?'F2':'F1')+' '+size+' Tf '+color+' rg 1 0 0 1 '+
   x+' '+y+' Tm '+hexText(safeText)+' Tj ET\n';
 }
-const money=(c:number)=>'R$ '+(c/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const signed=(c:number)=>c<0?'-'+money(-c):money(c);
+const signed=(c:number)=>formatBRL(c);
 export interface PdfRow {
  date:string;kind:string;title:string;status:string;account:string;amountCents:number;
 }
