@@ -106,7 +106,11 @@ export async function makeReport(
   const report:PdfReport={
    ...options,scope,rows,totals:total,
   };
-  bytes=createPdf(report);
+  try { bytes=createPdf(report); }
+  catch(cause){
+   if(cause instanceof RangeError && cause.message==='PDF page limit exceeded')throw new ReportTooLargeError();
+   throw cause;
+  }
  }else{
   const heads=['Data','Tipo','Descrição','Situação','Conta','Valor do evento (BRL)'];
   const sheet:SheetCell[][]=[
