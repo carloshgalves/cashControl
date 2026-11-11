@@ -210,6 +210,22 @@ async function main(){
       'Fixture must push due event past initial timeline page');
     log('C2_PINNED_ALERT_PAGINATION_PASS: selected alert is payable beyond first page');
 
+    log('C3 real API export with verified cookie and strict user scope');
+    const query='?from=2026-11-01&to=2026-11-30&asOf=2026-11-11&status=all';
+    const xlsx=await page.request.get(APP+'/api/reports/export'+query+'&format=xlsx');
+    assert.equal(xlsx.status(),200,'XLSX endpoint must use real authenticated D1 session');
+    assert.match(xlsx.headers()['content-type'],/spreadsheetml\.sheet/);
+    assert.match(xlsx.headers()['cache-control'],/no-store/);
+    assert.equal((await xlsx.body()).subarray(0,2).toString('ascii'),'PK');
+    const pdf=await page.request.get(APP+'/api/reports/export'+query+'&format=pdf');
+    assert.equal(pdf.status(),200,'PDF endpoint must use real authenticated D1 session');
+    assert.equal(pdf.headers()['content-type'],'application/pdf');
+    assert.match(pdf.headers()['content-disposition'],/attachment/);
+    assert.equal((await pdf.body()).subarray(0,5).toString('ascii'),'%PDF-');
+    const aliceAccountForExport=(await (await page.request.get(APP+'/api/accounts')).json())
+      .accounts.find(account=>account.name==='Carteira principal')?.accountId;
+    assert(aliceAccountForExport);
+    log('C3_REAL_AUTH_EXPORT_PASS: both file types, disposition and no-store');
     log('Logout revokes actual session');
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
@@ -217,6 +233,15 @@ async function main(){
     log('Bob sees only their own empty finances after login');
     await loginUi(page,users[1]);
     await page.getByText('Nenhuma conta cadastrada.').waitFor();
+    const wrongAccount=await page.request.get(APP+'/api/reports/export'+
+      '?from=2026-11-01&to=2026-11-30&asOf=2026-11-11&status=all&format=pdf&accountId='+aliceAccountForExport);
+    assert.equal(wrongAccount.status(),404,'Other user account export must look nonexistent');
+    const bobExport=await page.request.get(APP+'/api/reports/export'+
+      '?from=2026-11-01&to=2026-11-30&asOf=2026-11-11&format=xlsx');
+    assert.equal(bobExport.status(),200);
+    assert(!(await bobExport.body()).includes(Buffer.from('Serviço avulso')),
+      'No Alice finance in Bob XLSX');
+
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')
       .then(r=>r.json())).dashboard.balances.totalCents,0);
     log('Mobile width: navigation and no horizontal overflow');
