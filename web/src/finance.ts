@@ -53,7 +53,7 @@ export function weekRange(month: string, index: number): { from: string; to: str
   const start = [1, 8, 15, 22][index], end = index === 3 ? Number(last.slice(8)) : [7, 14, 21][index];
   const prefix = month + '-';
   return { from: prefix + String(start).padStart(2, '0'),
-    to: prefix + String(end).padStart(2, '0'), title: String(start).padStart(2, '0') + '–' + end };
+    to: prefix + String(end).padStart(2, '0'), title: String(start).padStart(2, '0') + '–' + String(end).padStart(2, '0') };
 }
 export interface WeekSummary { index: number; incomeCents: number; expensesCents: number; refundsCents: number; netCents: number; count: number }
 export function groupWeeks(movements: Movement[], month: string): WeekSummary[] {
