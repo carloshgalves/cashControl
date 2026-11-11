@@ -1,5 +1,5 @@
 name: oneoff-frontend-lock
-# One-time branch-only lock generation; remove this write-enabled workflow afterward.
+# Revalidate updated Vite 8 typed proxy then pin dependencies; remove afterward.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
