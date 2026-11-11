@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, allPages, getSession, login, logout, request, snapshot } from './api.ts';
 import { AlertPreview, TimelineScreen } from './Trail.tsx';
+import { ReportDialog } from './ReportDialog.tsx';
+import type { TrailFilter } from './trail.ts';
 import type { Account, Obligation, Movement, Session, Dashboard } from './api.ts';
 import {
   money, parseAmount, monthBounds, monthLabel, shiftMonth, today, weekOf, weekRange,
@@ -293,6 +295,7 @@ export function App() {
   const [expandedBill, setExpandedBill] = useState<string | null>(null);
   const [modal, setModal] = useState<{mode: EntryMode; bill?: Obligation} | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [reportPreset, setReportPreset] = useState<TrailFilter | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [notice, setNotice] = useState('');
 
@@ -344,7 +347,7 @@ export function App() {
     setSigningOut(true);
     try {
       await logout();
-      setSession(null); setData(null); setModal(null); setError('');
+      setSession(null); setData(null); setModal(null); setReportPreset(null); setError('');
       // Never retain the previous user's navigation, selected account/day or
       // financial context when a different session signs in on this tab.
       setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
@@ -368,7 +371,7 @@ export function App() {
   if (!session) return <Login onSuccess={value => {
     setView('overview'); setSelectedAccount(null); setSelectedDay(null);
     setExpandedBill(null); setWeek(1); setMonth(today().slice(0,7));
-    setSession(value); setData(null); setError(''); setNotice('');
+    setSession(value); setData(null); setReportPreset(null); setError(''); setNotice('');
   }}/>;
 
   return <div className="app-shell">
@@ -391,6 +394,10 @@ export function App() {
         <div className="top-actions"><span className="security-chip"><Icon>●</Icon> Sessão protegida</span>
           <button type="button" className="mobile-logout" aria-label="Sair com segurança" title="Sair com segurança"
             disabled={signingOut} onClick={signOut}><Icon>↪</Icon></button>
+          <button type="button" className="outline-btn report-top-button" aria-label="Exportar relatório"
+            disabled={!data || loading || !!error} onClick={() => setReportPreset('all')}>
+            <Icon>⇩</Icon> Exportar
+          </button>
           <button className="primary-btn register-btn" onClick={()=>setModal({mode:'expense'})} disabled={!accounts.length}>
             <Icon>＋</Icon> Registrar
           </button></div>
@@ -419,7 +426,7 @@ export function App() {
       {data && !loading && !error && <>
         {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
-          onPay={bill=>setModal({mode:'pay',bill})}/>}
+          onPay={bill=>setModal({mode:'pay',bill})} onExport={status=>setReportPreset(status)}/>}
         {view==='overview' && <div className="grid-main">
           <div className="main-column">
             <section className="balance-panel" aria-labelledby="balance-title">
@@ -555,6 +562,11 @@ export function App() {
         <Icon>{item.icon}</Icon>{item.short}</button>)}
     </nav>
     <button className="mobile-register" onClick={()=>setModal({mode:'expense'})} disabled={!accounts.length} aria-label="Registrar movimento">＋</button>
+    {reportPreset !== null && <ReportDialog month={month} accounts={accounts} initialStatus={reportPreset}
+      onClose={() => setReportPreset(null)} onSessionExpired={() => {
+        setReportPreset(null); setSession(null); setData(null);
+        setError(''); setNotice(''); setView('overview'); setSelectedAccount(null);
+      }}/>} 
     {modal&&<Dialog mode={modal.mode} bill={modal.bill} accounts={accounts}
       onClose={()=>setModal(null)} onComplete={done}/>}
   </div>;

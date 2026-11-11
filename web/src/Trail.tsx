@@ -78,8 +78,9 @@ export function AlertPreview({ onExplore, refreshKey }: { onExplore: () => void;
   </section>;
 }
 
-export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
-  month: string; obligations: Obligation[]; onPay: (bill: Obligation) => void; refreshKey: number;
+export function TimelineScreen({ month, obligations, onPay, onExport, refreshKey }: {
+  month: string; obligations: Obligation[]; onPay: (bill: Obligation) => void;
+  onExport: (status: TrailFilter) => void; refreshKey: number;
 }) {
   const asOf = today();
   const [filter, setFilter] = useState<TrailFilter>('all');
@@ -212,10 +213,12 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
     </section>
     <div className="trail-heading"><div><h3>A trilha de {monthLabel(month)}</h3>
       <p>Selecione um evento ou uma data. Os itens exibidos vêm do seu registro financeiro.</p></div>
-      <div role="group" className="trail-filters" aria-label="Filtrar eventos da trilha">
+      <div className="trail-filter-actions"><div role="group" className="trail-filters" aria-label="Filtrar eventos da trilha">
         {filterOptions.map(option=><button type="button" key={option.value} aria-pressed={filter===option.value}
           className={filter===option.value?'active':''} onClick={()=>{setFilter(option.value);setSelectedDay(null);setPinnedAlert(null);}}>
-          {option.label}</button>)}</div></div>
+          {option.label}</button>)}</div>
+        <button className="outline-btn trail-export" type="button" onClick={() => onExport(filter)}>
+          ⇩ Exportar filtro</button></div></div>
     {error && <div className="error-panel" role="alert">{error} <button className="outline-btn" onClick={()=>setRetry(n=>n+1)}>Tentar novamente</button></div>}
     <section className="trail-rail" aria-label="Cronologia interativa">
       <div className="trail-rail-head"><span>{friendlyDate(from)} – {friendlyDate(to)}</span>
