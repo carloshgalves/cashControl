@@ -5,6 +5,7 @@ import { createObligation, getObligation, listObligations, listObligationPayment
 import { createInternalTransfer, getInternalTransfer, listInternalTransfers } from '../transfers/transfers.ts';
 import { cancelUnpaidObligation, getExpenseRefund, listExpenseRefunds, refundPaidExpense } from '../compensations/compensations.ts';
 import { getDashboard } from '../dashboard/dashboard.ts';
+import { listTrail, listDueAlerts } from '../trail/trail.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -61,6 +62,36 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
+    if (method === 'GET' && (path === '/api/trail' || path === '/api/due-alerts')) {
+      const query = requestURL.searchParams;
+      const allowed = path === '/api/trail'
+        ? ['from', 'to', 'asOf', 'status', 'limit', 'offset']
+        : ['asOf', 'limit', 'offset'];
+      let invalid = false;
+      query.forEach((_value, name) => {
+        if (!allowed.includes(name) || query.getAll(name).length !== 1) invalid = true;
+      });
+      if (invalid) return error(400, 'INVALID_FILTER');
+      const asOf = query.get('asOf');
+      if (asOf === null) return error(400, 'INVALID_DATE');
+      const page = (name: string, fallback: number): number => {
+        const raw = query.get(name);
+        if (raw === null) return fallback;
+        if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
+        return Number(raw);
+      };
+      if (path === '/api/due-alerts') {
+        return json(await listDueAlerts(database, actor, {
+          asOf, limit: page('limit',40), offset: page('offset',0),
+        }));
+      }
+      const from = query.get('from'), to = query.get('to');
+      if (from === null || to === null) return error(400, 'INVALID_DATE');
+      return json(await listTrail(database, actor, {
+        from, to, asOf, status: query.get('status') ?? 'all',
+        limit: page('limit',40), offset: page('offset',0),
+      }));
+    }
     if (method === 'GET' && path === '/api/dashboard') {
       // Never silently ignore unsupported filters: a caller could otherwise
       // mistake an all-account total for a per-account or per-category total.
