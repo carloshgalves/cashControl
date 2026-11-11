@@ -1,5 +1,5 @@
 name: financial-timeline-local-d1-browser
-# Second pass after Node 22 strip-only TypeScript constructor compatibility fix; local only.
+# Third pass: strict TypeScript calendar parsing and validated query status; no deploy.
 on:
   push:
     branches: [feat/financial-timeline-alerts]
