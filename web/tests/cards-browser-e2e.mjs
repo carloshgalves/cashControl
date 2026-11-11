@@ -80,8 +80,9 @@ async function main(){
    await page.getByRole('region',{name:'Detalhes das parcelas'}).getByText(/Parcela 1\/10/).waitFor();
   });
   const after=await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30');
-  assert.equal((await after.json()).dashboard.balances.totalCents,0);
-  assert.equal((await after.json()).dashboard.cashFlow.expensesCents,0);
+  const updatedDashboard=(await after.json()).dashboard;
+  assert.equal(updatedDashboard.balances.totalCents,0);
+  assert.equal(updatedDashboard.cashFlow.expensesCents,0);
   assert.equal((await page.request.get(APP+'/api/movements')).status(),200);
   assert.equal((await (await page.request.get(APP+'/api/movements')).json()).movements.length,0);
   console.log('D1_CREDIT_UI_PASS: card, 10x invoice, no cash movement');
