@@ -2,7 +2,7 @@ import type { Obligation } from './api.ts';
 import { request } from './api.ts';
 import { friendlyDate, money, monthBounds, today } from './finance.ts';
 
-export type TrailStatus = 'realized' | 'pending' | 'planned' | 'canceled';
+export type TrailStatus = 'realized' | 'pending' | 'overdue' | 'planned' | 'canceled';
 export type TrailKind = 'income' | 'expense' | 'payment' | 'refund' | 'transfer' | 'obligation' | 'cancellation';
 export type TrailFilter = 'all' | TrailStatus;
 export interface TrailEvent {
@@ -24,11 +24,13 @@ export const filterOptions: { value: TrailFilter; label: string }[] = [
   { value: 'all', label: 'Tudo' },
   { value: 'realized', label: 'Realizados' },
   { value: 'pending', label: 'Pendentes' },
+  { value: 'overdue', label: 'Atrasados' },
   { value: 'planned', label: 'Previstos' },
   { value: 'canceled', label: 'Cancelados' },
 ];
 export const statusLabel: Record<TrailStatus, string> = {
-  realized: 'Realizado', pending: 'Pendente', planned: 'Previsto', canceled: 'Cancelado',
+  realized: 'Realizado', pending: 'Pendente', overdue: 'Atrasado',
+  planned: 'Previsto', canceled: 'Cancelado',
 };
 export const kindLabel: Record<TrailKind,string> = {
   income: 'Entrada confirmada', expense: 'Saída confirmada',

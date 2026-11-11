@@ -1,7 +1,7 @@
 import type { AuthenticatedActor, FinancialDatabase } from '../accounts/accounts.ts';
 import { assertCents } from '../../domain/money.ts';
 
-export type TimelineStatus = 'realized' | 'pending' | 'planned' | 'canceled';
+export type TimelineStatus = 'realized' | 'pending' | 'overdue' | 'planned' | 'canceled';
 export type TimelineKind = 'income' | 'expense' | 'payment' | 'refund' |
   'transfer' | 'obligation' | 'cancellation';
 export interface TimelineEvent {
@@ -53,7 +53,7 @@ interface AlertRow {
   outstanding_cents: number;
 }
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
-const statuses = new Set<string>(['all', 'realized', 'pending', 'planned', 'canceled']);
+const statuses = new Set<string>(['all', 'realized', 'pending', 'overdue', 'planned', 'canceled']);
 
 export function validateDate(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !DATE.test(value)) throw new TypeError('Invalid calendar date');
@@ -131,7 +131,7 @@ const EVENT_SQL = [
   ' FROM internal_transfers t WHERE t.owner_user_id = ?',
   ' UNION ALL',
   " SELECT 'obligation:' || o.obligation_id, o.due_on,",
-  " 'obligation', CASE WHEN o.due_on > ? THEN 'planned' ELSE 'pending' END,",
+  " 'obligation', CASE WHEN o.due_on > ? THEN 'planned' WHEN o.due_on < ? THEN 'overdue' ELSE 'pending' END,",
   ' o.title, o.outstanding_cents, NULL, o.obligation_id, NULL, o.created_at',
   ' FROM financial_obligation_balances o',
   ' WHERE o.owner_user_id = ? AND o.outstanding_cents > 0 AND o.cancellation_id IS NULL',
@@ -156,7 +156,7 @@ export async function listTimeline(db: FinancialDatabase, actor: AuthenticatedAc
   options: TimelineOptions): Promise<TimelinePage> {
   const who = owner(actor), { status, limit, offset } = checkOptions(options);
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, who, who,
+    who, who, options.asOf, options.asOf, who, who,
     options.from, options.to, status, status, limit + 1, offset,
   ).all<EventRow>();
   const events = rows.results.slice(0, limit).map((r): TimelineEvent => {
@@ -194,9 +194,14 @@ export async function listDueAlerts(db: FinancialDatabase, actor: AuthenticatedA
     'WHERE owner_user_id = ? AND cancellation_id IS NULL',
     ' AND outstanding_cents > 0',
     " AND due_on <= date(?, '+10 days')",
-    'ORDER BY CASE WHEN due_on < ? THEN 1 ELSE 0 END, due_on ASC, obligation_id ASC',
+    // Show upcoming due dates first, then the *most recent* overdue items.
+    // Sorting overdue ASC surfaced stale historical bills before urgent ones.
+    'ORDER BY CASE WHEN due_on < ? THEN 1 ELSE 0 END ASC,',
+    ' CASE WHEN due_on >= ? THEN due_on END ASC,',
+    ' CASE WHEN due_on < ? THEN due_on END DESC, obligation_id ASC',
     'LIMIT ? OFFSET ?',
-  ].join(' ')).bind(who, options.asOf, options.asOf, limit + 1, offset).all<AlertRow>();
+  ].join(' ')).bind(who, options.asOf, options.asOf, options.asOf, options.asOf,
+    limit + 1, offset).all<AlertRow>();
   const alerts = rows.results.slice(0, limit).map((row): DueAlert => {
     assertCents(row.outstanding_cents);
     const daysUntil = daysBetween(options.asOf, row.due_on);

@@ -87,3 +87,8 @@
  .trail-alerts,.trail-preview-items{display:grid}
  .trail-alert,.trail-preview-items button{width:100%}
 }
+
+/* Dedicated overdue state: text remains authoritative, color secondary. */
+.trail-event-overdue .trail-node{background:#a64b38;border-color:#f9e2db}
+.trail-event-overdue .trail-event-status,.trail-event-overdue .trail-event-value{color:#9c4838}
+.trail-state-overdue{background:#f8e3dc;color:#983f34}
