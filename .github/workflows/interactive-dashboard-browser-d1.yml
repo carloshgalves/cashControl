@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# Browser re-review 7: serve compiled production build to avoid HMR-induced UI resets; no deploy.
+# Merge gate: rerun complete Chromium/D1 suite after PR #36 merge and BRL zero-prefix fix; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
