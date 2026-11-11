@@ -1,0 +1,63 @@
+name: interactive-dashboard-browser-d1
+# Final merge gate: real D1 transfer defaults, two-user Chrome regression and exact BRL input; no deploy.
+on:
+  push:
+    branches: [feat/interactive-dashboard-ui]
+    paths: [.github/workflows/interactive-dashboard-browser-d1.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cashcontrol-interactive-dashboard-browser
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install exact committed dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Compile and test frontend and backend
+        run: |
+          npm run ui:check
+          npm run ui:test
+          npm run ui:build
+          npm run typecheck
+          npm test
+          node --check web/tests/browser-e2e.mjs
+      - name: Install Chromium for actual UX interactions
+        run: npx playwright install --only-shell chromium
+      - name: Prepare disposable local D1 configuration
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply real D1 migrations locally
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Start local Worker and Vite with secure same-origin proxy
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/cashcontrol-ui-worker.log 2>&1 &
+          echo $! > /tmp/cashcontrol-ui-worker.pid
+          npm run ui:preview > /tmp/cashcontrol-ui-vite.log 2>&1 &
+          echo $! > /tmp/cashcontrol-ui-vite.pid
+      - name: Browser E2E — login logout accounts transfers obligations and mobile
+        run: npm run ui:e2e
+      - name: Stop local services
+        if: always()
+        shell: bash
+        run: |
+          for pidfile in /tmp/cashcontrol-ui-worker.pid /tmp/cashcontrol-ui-vite.pid; do
+            if [ -f "$pidfile" ]; then kill "$(cat "$pidfile")" 2>/dev/null || true; fi
+          done
+      - name: No production deployment
+        if: always()
+        run: echo 'NO_DEPLOY; NO_REMOTE_D1; LOCAL_AUTH_ONLY; NO_USER_FINANCIAL_DATA'
