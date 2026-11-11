@@ -33,11 +33,15 @@ export interface Dashboard {
 }
 export interface Session { user: { id: string; email: string; name?: string }; session: { id: string } }
 export class ApiError extends Error {
-  constructor(public readonly status: number, public readonly code: string) {
+  readonly status: number;
+  readonly code: string;
+  constructor(status: number, code: string) {
     super(status === 401 ? 'Sessão expirada. Entre novamente.' :
       status === 403 ? 'Operação bloqueada por segurança.' :
       status === 409 ? 'Não foi possível concluir. Verifique os dados e o saldo.' :
       status >= 500 ? 'Serviço indisponível. Tente novamente.' : 'Confira os dados informados.');
+    this.status = status;
+    this.code = code;
   }
 }
 export async function request<T>(url: string, opts: { method?: 'GET' | 'POST'; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
