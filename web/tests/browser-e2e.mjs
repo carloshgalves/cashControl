@@ -196,6 +196,12 @@ async function main(){
     await page.getByRole('heading',{name:'Agenda de compromissos'}).waitFor();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
     assert.equal(overflow,false,'Mobile layout overflows viewport');
+    await page.getByRole('navigation',{name:'Navegação principal'}).getByRole('button',{name:'Trilha'}).click();
+    await page.getByRole('heading',{name:/O que aconteceu/}).waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2),false,
+      'Financial timeline layout overflows narrow mobile viewport');
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Previstos'}).click();
+    await page.getByText('Nenhum evento corresponde a este período e filtro.').waitFor();
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).status(),401,
