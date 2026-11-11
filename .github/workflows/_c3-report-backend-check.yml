@@ -1,5 +1,5 @@
 name: c3-backend-private-export-review
-# Review cycle 3: ZIP CRC and Unicode glyph preservation; same local-only validation.
+# Review cycle 4: large multipage PDF fails explicitly with HTTP 413; local D1 only.
 on:
   push:
     branches: [feat/c3-financial-export-backend]
