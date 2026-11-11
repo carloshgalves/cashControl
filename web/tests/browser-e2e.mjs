@@ -228,6 +228,11 @@ async function main(){
     assert(aliceAccountForExport);
     log('C3_REAL_AUTH_EXPORT_PASS: both file types, disposition and no-store');
     log('C3 UI export: actual buttons produce browser downloads with selected filters');
+    await page.evaluate(() => {
+      const create = URL.createObjectURL.bind(URL);
+      window.__c3BlobUrls = [];
+      URL.createObjectURL = blob => { const value = create(blob); window.__c3BlobUrls.push(value); return value; };
+    });
     await page.getByRole('button',{name:'Exportar relatório'}).click();
     const exportDialog=page.getByRole('dialog',{name:'Exportar histórico'});
     await exportDialog.waitFor();
@@ -265,6 +270,11 @@ async function main(){
     assert.equal(await exportDialog.getByRole('button',{name:'Baixar XLSX'}).isEnabled(),true);
     await page.unroute('**/api/reports/export?**');
     await exportDialog.getByRole('button',{name:'Fechar exportação'}).click();
+    const retainedBlobAccessible=await page.evaluate(async() => {
+      const link=window.__c3BlobUrls.at(-1);
+      try { await fetch(link); return true; } catch { return false; }
+    });
+    assert.equal(retainedBlobAccessible,false,'Private downloaded blob must be revoked on dialog close');
     await page.getByRole('button',{name:'Trilha financeira'}).click();
     await page.getByRole('group',{name:'Filtrar eventos da trilha'})
       .getByRole('button',{name:'Atrasados'}).click();
