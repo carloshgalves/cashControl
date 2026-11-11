@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# Browser re-review 2: exact locator for opening balance; no deploy.
+# Browser re-review 3: consistent weekly labels and error reporting; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
