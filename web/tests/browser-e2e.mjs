@@ -40,7 +40,15 @@ async function loginUi(page,user) {
 }
 async function modal(page, mode) {
   await page.getByRole('button',{name:'Registrar',exact:true}).click();
-  await page.getByRole('dialog').waitFor({state:'visible'});
+  try { await page.getByRole('dialog').waitFor({state:'visible'}); }
+  catch(error) {
+    console.log('UI_DIAGNOSTIC_AFTER_REGISTER:',JSON.stringify({
+      body:(await page.locator('body').innerText()).slice(-2000),
+      title:await page.title(),
+      buttons:await page.getByRole('button').allTextContents(),
+    }));
+    throw error;
+  }
   if(mode==='income')await page.getByRole('button',{name:'Entrada',exact:true}).click();
   if(mode==='transfer')await page.getByRole('button',{name:'Transferência',exact:true}).click();
   try { await page.locator('#entry-amount').waitFor({state:'visible'}); }
