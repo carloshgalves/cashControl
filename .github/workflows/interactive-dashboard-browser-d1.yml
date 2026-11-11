@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# Merge gate re-run: install headless Chromium shell without redundant apt dependencies; no deploy.
+# Final merge gate: real D1 transfer defaults, two-user Chrome regression and exact BRL input; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
