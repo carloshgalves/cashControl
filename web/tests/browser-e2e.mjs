@@ -97,6 +97,13 @@ async function main(){
     await page.getByLabel('Conta de destino').selectOption({label:'Reserva'});
     await page.getByLabel('Data efetiva').fill('2026-11-10');
     await page.getByRole('button',{name:'Confirmar registro'}).click();
+    try { await page.getByRole('dialog').waitFor({state:'hidden',timeout:7000}); }
+    catch (error) {
+      console.log('UI_DIAGNOSTIC_TRANSFER_FORM:',JSON.stringify(await page.locator('.dialog').allTextContents()));
+      throw error;
+    }
+    const accountCheck=await page.request.get(APP+'/api/accounts');
+    console.log('UI_DIAGNOSTIC_ACCOUNT_BALANCES:',JSON.stringify((await accountCheck.json()).accounts?.map(a=>[a.name,a.balanceCents])));
     await page.getByText('R$ 96,00').first().waitFor();
     log('Pay partial obligation via approved interactive upcoming card');
     const billResponse=await page.request.post(APP+'/api/obligations',{
