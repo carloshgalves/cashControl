@@ -40,7 +40,7 @@ class DB {
 }
 const actor=userId=>({userId});
 const cents=parseCents;
-const key=s=>'trail-fixture-'+s;
+const key=s=>'trail-fixture-'+s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9_-]/g,'-');
 const clock=()=>new Date('2026-11-11T12:00:00.000Z');
 const range=(overrides={})=>({from:'2026-11-01',to:'2026-11-30',asOf:'2026-11-11',...overrides});
 async function withDb(fn){const db=new DB();try{return await fn(db)}finally{db.close()}}
