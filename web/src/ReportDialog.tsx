@@ -25,6 +25,15 @@ export function ReportDialog({ month, accounts, initialStatus, onClose, onSessio
   const dialog = useRef<HTMLDivElement>(null);
   const first = useRef<HTMLInputElement>(null);
   const activeRequest = useRef<AbortController | null>(null);
+  const downloadUrls = useRef(new Set<string>());
+  const revokeTimers = useRef(new Map<string, number>());
+  function revokeDownload(url: string) {
+    const timer = revokeTimers.current.get(url);
+    if (timer !== undefined) window.clearTimeout(timer);
+    revokeTimers.current.delete(url);
+    downloadUrls.current.delete(url);
+    URL.revokeObjectURL(url);
+  }
   const previousFocus = useRef<Element | null>(null);
 
   useEffect(() => {
@@ -34,6 +43,7 @@ export function ReportDialog({ month, accounts, initialStatus, onClose, onSessio
     document.body.style.overflow = 'hidden';
     return () => {
       activeRequest.current?.abort();
+      for (const url of [...downloadUrls.current]) revokeDownload(url);
       document.body.style.overflow = oldOverflow;
       if (previousFocus.current instanceof HTMLElement) previousFocus.current.focus();
     };
@@ -68,6 +78,7 @@ export function ReportDialog({ month, accounts, initialStatus, onClose, onSessio
       const result = await fetchReport(filters, format, controller.signal);
       if (controller.signal.aborted) return;
       const href = URL.createObjectURL(result.blob);
+      downloadUrls.current.add(href);
       try {
         const anchor = document.createElement('a');
         anchor.href = href;
@@ -77,9 +88,9 @@ export function ReportDialog({ month, accounts, initialStatus, onClose, onSessio
         anchor.click();
         anchor.remove();
         // Allow the browser's download manager to consume the blob first.
-        window.setTimeout(() => URL.revokeObjectURL(href), 60_000);
+        revokeTimers.current.set(href, window.setTimeout(() => revokeDownload(href), 15_000));
       } catch (cause) {
-        URL.revokeObjectURL(href);
+        revokeDownload(href);
         throw cause;
       }
       setSuccess('Arquivo ' + format.toUpperCase() + ' preparado para download.');
