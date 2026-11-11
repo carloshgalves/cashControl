@@ -145,6 +145,8 @@ test('union ledger counts each payment, refund and transfer exactly once, with c
     amountCents:cents('12'),transferredOn:'2026-11-11',
   },clock);
   const v=await listTimeline(db,actor('alice'),period());
+  const dates=v.events.map(x=>x.date);
+  assert.deepEqual(dates,[...dates].sort(),'event rail must be chronological');
   const kinds=v.events.map(x=>x.kind).sort();
   assert.deepEqual(kinds,['expense','income','obligation','payment','refund','transfer']);
   assert.equal(v.events.filter(x=>x.id==='movement:'+payment.movementId).length,1);
