@@ -1,5 +1,5 @@
 name: interactive-dashboard-browser-d1
-# Browser re-review 3: consistent weekly labels and error reporting; no deploy.
+# Browser re-review 4: trace transfer failure vs rendering with actual database values; no deploy.
 on:
   push:
     branches: [feat/interactive-dashboard-ui]
