@@ -1,5 +1,5 @@
 name: c3-backend-private-export-review
-# Branch-only disposable integration. Never deploy or touch a remote D1.
+# Review cycle 2: correct PDF title wrapping and future obligation test expectation.
 on:
   push:
     branches: [feat/c3-financial-export-backend]
