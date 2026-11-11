@@ -75,3 +75,15 @@ Nunca versionar `.dev.vars` ou `wrangler.toml` com segredos reais.
 - A etapa de Cloudflare remoto, CPU da autenticação, backup e produção fica adiada conforme decisão do proprietário.
 
 **A interface aprovada foi implementada.** Requisições reais de dados, revisão humana das PRs e continuidade dos tickets permanecem controladas pelo proprietário.
+
+
+## Revisão de integração e reteste — 11/11/2026
+
+- **PR #36 mesclada** à `main` com commit `cafa272b3b56423cb82e98f614d31a2cb9c55dbb`. PR #37 foi retargeted para `main` e a branch recebeu merge sem conflito da `main`, preservando o código da UI.
+- **UI-F04 (valor BRL ambíguo):** o parser de entrada podia interpretar `0.001` como R$ 1,00 pela regra de separador de milhares. Corrigido para não aceitar grupo de milhares iniciado por zero e adicionadas regressões para `0.001`, `00.123`, `001.234` e `0.001,23`. Valores brasileiros válidos permanecem aceitos.
+- **UI-F05 (ordem das contas instável):** a consulta do D1 podia ordenar contas criadas no mesmo segundo por UUID, fazendo o formulário escolher conta sem saldo e, eventualmente, a mesma conta como origem/destino da transferência. O default agora prioriza conta com saldo positivo para despesas, pagamentos e transferências e escolhe destino diferente. O navegador confirma que o fluxo debita exatamente a conta de origem e credita a conta de destino.
+- **Teste determinístico:** a suíte E2E deixou de selecionar a primeira conta apenas pela posição e passou a verificar o nome das duas opções selecionadas. Saldo da conta principal e reserva são assertados a partir da API real, sem imprimir dados financeiros nos logs.
+- **Infraestrutura de teste:** uma execução ficou presa na instalação de dependências do sistema para Chromium; foi substituída pela instalação exclusiva do `headless shell` para rodar a build de produção, sem alterar a semântica financeira testada.
+- **[GitHub Actions #43056130777 — SUCCESS](https://github.com/carloshgalves/cashControl/actions/runs/43056130777):** `npm ci`, typechecks e build, **5/5 testes de UI**, **104/104 testes de backend**, D1 local 0001–0006 e `UI_BROWSER_E2E_PASS` com Better Auth real, dois usuários, contas, transferências, baixas, logout e mobile. Nenhum finding acionável reproduzível no escopo desta execução.
+
+**Gate de merge:** como o único commit posterior à execução final é documentação, a implementação validada permanece idêntica à do último CI. Revisão formal de acessibilidade, produção remota e testes de carga seguem fora do escopo da PR #37.
