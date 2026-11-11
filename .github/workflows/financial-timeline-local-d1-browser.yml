@@ -1,5 +1,5 @@
 name: financial-timeline-local-d1-browser
-# Final C2 gate: chronological rail, calendar/detail consistency and cross-month alerts; local D1 only.
+# Definitive C2 gate: real mobile trail interactions plus all finance regressions; no deploy.
 on:
   push:
     branches: [feat/financial-timeline-alerts]
