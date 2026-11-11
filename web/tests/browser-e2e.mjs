@@ -181,6 +181,28 @@ async function main(){
     await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Realizados'}).click();
     await page.getByText('Serviço avulso').first().waitFor();
     log('C2 trail browser passed: alerts, contextual payment, cancellation, status filter');
+    log('C2 pagination regression: due alert must remain actionable beyond first 30 chronological events');
+    const ownAccounts=(await (await page.request.get(APP+'/api/accounts')).json()).accounts;
+    const primary=ownAccounts.find(account=>account.name==='Carteira principal');
+    assert(primary,'Expected first account for 31-event timeline pagination fixture');
+    for(let i=0;i<32;i++){
+      const response=await page.request.post(APP+'/api/movements',{
+        headers:{origin:APP},
+        data:{idempotencyKey:'ui-c2-page-'+tag+'-'+String(i).padStart(3,'0'),
+          accountId:primary.accountId,direction:'expense',amount:'0.01',
+          method:'pix',description:'History '+i,occurredOn:'2026-11-01'},
+      });
+      assert.equal(response.status(),201,'Cannot create paginated ledger fixture');
+    }
+    await page.reload();
+    await page.getByRole('button',{name:'Trilha financeira'}).click();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).click();
+    await page.getByRole('heading',{name:'Energia teste D5'}).waitFor();
+    await page.getByRole('button',{name:'Registrar pagamento efetivo'}).waitFor();
+    assert((await page.getByRole('button',{name:'Carregar mais eventos'}).count())>0,
+      'Fixture must push due event past initial timeline page');
+    log('C2_PINNED_ALERT_PAGINATION_PASS: selected alert is payable beyond first page');
+
     log('Logout revokes actual session');
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
