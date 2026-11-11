@@ -369,6 +369,8 @@ export function App() {
       <header className="topbar">
         <span className="breadcrumb">cashControl <span>/</span> {names[view]}</span>
         <div className="top-actions"><span className="security-chip"><Icon>●</Icon> Sessão protegida</span>
+          <button type="button" className="mobile-logout" aria-label="Sair com segurança" title="Sair com segurança"
+            disabled={signingOut} onClick={signOut}><Icon>↪</Icon></button>
           <button className="primary-btn register-btn" onClick={()=>setModal({mode:'expense'})} disabled={!accounts.length}>
             <Icon>＋</Icon> Registrar
           </button></div>
