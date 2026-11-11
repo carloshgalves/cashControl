@@ -53,7 +53,9 @@ async function main(){
   const browser=await chromium.launch({headless:true});
   const context=await browser.newContext({viewport:{width:1366,height:900},locale:'pt-BR'});
   const page=await context.newPage();
-  page.on('pageerror',e=>{throw e;});
+  page.setDefaultTimeout(12000);
+  const pageErrors=[];
+  page.on('pageerror',e=>pageErrors.push(e.message));
   try {
     log('Open UI and login as Alice');
     await page.goto(APP,{waitUntil:'domcontentloaded'});
@@ -132,6 +134,7 @@ async function main(){
     await page.getByRole('heading',{name:'Agenda de compromissos'}).waitFor();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
     assert.equal(overflow,false,'Mobile layout overflows viewport');
+    assert.deepEqual(pageErrors,[],'Unhandled browser application errors');
     console.log('UI_BROWSER_E2E_PASS: real Better Auth login/logout, centavo postings, week chart, partial bills, tenant isolation, responsive mobile');
   } finally {
     await context.close(); await browser.close();
