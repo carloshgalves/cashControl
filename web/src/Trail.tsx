@@ -211,7 +211,7 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
       <p>Selecione um evento ou uma data. Os itens exibidos vêm do seu registro financeiro.</p></div>
       <div role="group" className="trail-filters" aria-label="Filtrar eventos da trilha">
         {filterOptions.map(option=><button type="button" key={option.value} aria-pressed={filter===option.value}
-          className={filter===option.value?'active':''} onClick={()=>{setFilter(option.value);setSelectedDay(null);}}>
+          className={filter===option.value?'active':''} onClick={()=>{setFilter(option.value);setSelectedDay(null);setPinnedAlert(null);}}>
           {option.label}</button>)}</div></div>
     {error && <div className="error-panel" role="alert">{error} <button className="outline-btn" onClick={()=>setRetry(n=>n+1)}>Tentar novamente</button></div>}
     <section className="trail-rail" aria-label="Cronologia interativa">
