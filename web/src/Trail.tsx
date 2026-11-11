@@ -89,6 +89,7 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
   const [moreAlerts, setMoreAlerts] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [pinnedAlert, setPinnedAlert] = useState<DueAlert | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [alertLoading, setAlertLoading] = useState(true);
@@ -131,13 +132,22 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
     return () => controller.abort();
   }, [asOf, refreshKey, retry]);
 
-  const selected = events.find(item => item.id === selectedId) ?? events[0] ?? null;
   const { from, to } = monthBounds(month);
   const calendarDays = Number(to.slice(8,10));
   const firstWeekday = new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-1,1)).getUTCDay();
   const dayEvents = useMemo(() => events.filter(e => !selectedDay || e.date === selectedDay), [events, selectedDay]);
   const dates = useMemo(() => new Set(events.map(e => e.date)), [events]);
-  const activeObligation = selected ? findPayable(selected,obligations) : undefined;
+  const selected = dayEvents.find(item => item.id === selectedId) ?? dayEvents[0] ?? null;
+  // Alert cards can refer to another month. Show the actual unpaid obligation
+  // without pretending that it belongs to the currently selected month.
+  const detailEvent: TrailEvent | null = pinnedAlert ? {
+    id: 'obligation:' + pinnedAlert.obligationId,
+    date: pinnedAlert.dueOn, kind: 'obligation',
+    status: pinnedAlert.dueOn > asOf ? 'planned' : 'pending',
+    title: pinnedAlert.title, amountCents: pinnedAlert.outstandingCents,
+    accountId: null, obligationId: pinnedAlert.obligationId, relatedId: null,
+  } : selected;
+  const activeObligation = detailEvent ? findPayable(detailEvent,obligations) : undefined;
 
   async function nextPage() {
     if (loading || loadingMore || !hasMore) return;
@@ -161,7 +171,9 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
     finally { setAlertLoading(false); }
   }
   function selectAlert(alert: DueAlert) {
+    setPinnedAlert(alert);
     if (alert.dueOn >= from && alert.dueOn <= to) {
+      setPinnedAlert(null);
       const targetId = 'obligation:' + alert.obligationId;
       setSelectedDay(null);
       setSelectedId(targetId);
@@ -169,12 +181,9 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
         pendingAlertSelection.current = targetId;
         setFilter('all');
       }
-    } else {
-      const el = document.getElementById('trail-attention');
-      el?.scrollIntoView({ block:'nearest', behavior:'smooth' });
-      // The bill remains available in the alert card: the chosen month should
-      // never be changed silently without a user action.
     }
+    // Outside the chosen month, the details panel still shows the real
+    // obligation and contextual payment action without changing the month.
   }
 
   return <section className="trail-feature" aria-label="Trilha financeira">
@@ -214,7 +223,7 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
         {dayEvents.map(event=><button key={event.id} type="button"
           className={'trail-event trail-event-'+event.status+(selected?.id===event.id?' selected':'')}
           aria-pressed={selected?.id===event.id}
-          onClick={()=>setSelectedId(event.id)}>
+          onClick={()=>{setPinnedAlert(null);setSelectedId(event.id);}}>
           <span className="trail-event-date">{friendlyDate(event.date)}</span>
           <i aria-hidden="true" className="trail-node"/>
           <span className="trail-event-status">{statusLabel[event.status]}</span>
@@ -227,7 +236,7 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
         {loadingMore ? 'Carregando…' : 'Carregar mais eventos'}</button>}
     </section>
     <div className="trail-bottom">
-      <EventDetails event={selected} asOf={asOf} onPay={onPay} obligation={activeObligation}/>
+      <EventDetails event={detailEvent} asOf={asOf} onPay={onPay} obligation={activeObligation}/>
       <section className="trail-calendar" aria-label="Navegador de datas">
         <div className="trail-cal-head"><h3>{monthLabel(month)}, em um olhar</h3><span>Selecione um dia</span></div>
         <div className="trail-day-grid">{['D','S','T','Q','Q','S','S'].map((label,i)=>
@@ -237,7 +246,7 @@ export function TimelineScreen({ month, obligations, onPay, refreshKey }: {
             const date = month+'-'+String(i+1).padStart(2,'0');
             return <button key={date} type="button" aria-pressed={selectedDay===date}
               className={'trail-day'+(dates.has(date)?' has-events':'')+(selectedDay===date?' active':'')}
-              onClick={()=>{setSelectedDay(prev=>prev===date?null:date);const found=events.find(x=>x.date===date);if(found)setSelectedId(found.id);}}>
+              onClick={()=>{setPinnedAlert(null);setSelectedDay(prev=>prev===date?null:date);const found=events.find(x=>x.date===date);setSelectedId(found?.id ?? null);}}>
               <strong>{i+1}</strong><i aria-hidden="true"/></button>;
           })}</div>
         <div className="trail-cal-foot">{selectedDay ? (dates.has(selectedDay)
