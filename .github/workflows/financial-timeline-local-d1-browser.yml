@@ -1,5 +1,5 @@
 name: financial-timeline-local-d1-browser
-# Third pass: strict TypeScript calendar parsing and validated query status; no deploy.
+# Fourth pass: reset transient financial navigation between A/B sessions; no deploy.
 on:
   push:
     branches: [feat/financial-timeline-alerts]
