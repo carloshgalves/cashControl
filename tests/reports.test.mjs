@@ -387,7 +387,7 @@ test('regression C3-R3-01: words following a space split by glyph without losing
  const report=await makeReport(db,actor('alice'),options({format:'pdf',accountId:acc.accountId}));
  const lines=pdfRuns(report.bytes);
  const titleRuns=lines.filter(run=>run.x===216&&run.font===1); // exclude bold table header
- const accountRuns=lines.filter(run=>run.x===549&&run.font===1); // exclude bold table header
+ const accountRuns=lines.filter(run=>run.x===549&&run.font===1&&run.size===8); // exclude summary cell at x=549 (size 8.5) and table header
  assert.equal(titleRuns.map(run=>run.text).join('').replace(/\s/g,''),'i'+'M'.repeat(32),
   'word split must not lose any title glyph');
  assert.equal(accountRuns.map(run=>run.text).join('').replace(/\s/g,''),'i'+'W'.repeat(17),
