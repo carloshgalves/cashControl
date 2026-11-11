@@ -134,6 +134,10 @@ async function main(){
     await page.getByRole('heading',{name:'Agenda de compromissos'}).waitFor();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
     assert.equal(overflow,false,'Mobile layout overflows viewport');
+    await page.getByRole('button',{name:'Sair com segurança'}).click();
+    await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
+    assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).status(),401,
+      'Mobile logout must revoke the verified session');
     assert.deepEqual(pageErrors,[],'Unhandled browser application errors');
     console.log('UI_BROWSER_E2E_PASS: real Better Auth login/logout, centavo postings, week chart, partial bills, tenant isolation, responsive mobile');
   } finally {
