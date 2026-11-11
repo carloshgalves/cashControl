@@ -107,8 +107,9 @@ async function main(){
     await page.getByRole('button',{name:'Criar conta',exact:true}).click();
     await page.getByRole('button',{name:/Transferir/}).click();
     await page.locator('#entry-amount').fill('25,00');
-    await page.getByLabel('Conta de origem').selectOption({index:0});
-    await page.getByLabel('Conta de destino').selectOption({label:'Reserva'});
+    // The D1 account order can vary. Defaults must be funded and distinct.
+    assert.match(await page.locator('#entry-account option:checked').textContent(),/Carteira principal/);
+    assert.match(await page.locator('#entry-target option:checked').textContent(),/Reserva/);
     await page.getByLabel('Data efetiva').fill('2026-11-10');
     await page.getByRole('button',{name:'Confirmar registro'}).click();
     try { await page.getByRole('dialog').waitFor({state:'hidden',timeout:7000}); }
@@ -117,7 +118,10 @@ async function main(){
       throw error;
     }
     const accountCheck=await page.request.get(APP+'/api/accounts');
-    console.log('UI_DIAGNOSTIC_ACCOUNT_BALANCES:',JSON.stringify((await accountCheck.json()).accounts?.map(a=>[a.name,a.balanceCents])));
+    assert.equal(accountCheck.status(),200);
+    const amounts=new Map((await accountCheck.json()).accounts.map(a=>[a.name,a.balanceCents]));
+    assert.equal(amounts.get('Carteira principal'),9600,'transfer debited wrong account');
+    assert.equal(amounts.get('Reserva'),2500,'transfer credited wrong account');
     await page.getByText('R$ 96,00').first().waitFor();
     log('Pay partial obligation via approved interactive upcoming card');
     const billResponse=await page.request.post(APP+'/api/obligations',{
