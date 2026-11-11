@@ -8,6 +8,10 @@ import { getDashboard } from '../dashboard/dashboard.ts';
 import { listTimeline, listDueAlerts } from '../timeline/timeline.ts';
 import { makeReport, ReportAccountNotFound, ReportReconciliationError } from '../reports/report.ts';
 import { ReportTooLargeError } from '../timeline/timeline.ts';
+import { createCard, listCards, getCard, createPurchase, listPurchases, getPurchase,
+ getPurchaseInstallments, listInvoices, getInvoice,
+ CreditCardUnavailable, CreditPurchaseUnavailable, CreditIdempotencyConflict,
+ CreditResultTooLarge } from '../cards/cards.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -253,6 +257,93 @@ export async function handleFinancialHttp(
       });
       return json({ transfer }, 201);
     }
+    // SPEC-004 / D1: credit is a commitment, never an immediate cash flow.
+    // All paths share the verified Better Auth principal and strict origin.
+    if (path.startsWith('/api/cards')) {
+      const cardMatch=path.match(/^\/api\/cards\/([0-9a-f-]{36})$/);
+      const purchaseList=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/purchases$/);
+      const purchaseDetail=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/purchases\/([0-9a-f-]{36})$/);
+      const invoiceList=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices$/);
+      const invoiceDetail=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices\/(\d{4}-\d{2})$/);
+      const page=(name:string,defaultValue:number)=>{
+        const raw=requestURL.searchParams.get(name);
+        if(raw===null)return defaultValue;
+        if(!/^(?:0|[1-9]\d{0,6})$/.test(raw))throw new TypeError('Invalid paging');
+        return Number(raw);
+      };
+      const allowed=method==='GET'&&
+        (purchaseList!==null||invoiceList!==null)?new Set(['limit','offset']):new Set<string>();
+      for(const key of requestURL.searchParams.keys()){
+        if(!allowed.has(key)||requestURL.searchParams.getAll(key).length!==1)return error(400,'INVALID_FILTER');
+      }
+      if (method==='GET' && path==='/api/cards')return json({cards:await listCards(database,actor)});
+      if (method==='GET' && cardMatch){
+        const card=await getCard(database,actor,cardMatch[1]!);
+        return card?json({card}):error(404,'NOT_FOUND');
+      }
+      if (method==='GET' && purchaseList){
+        return json({purchases:await listPurchases(database,actor,purchaseList[1]!,
+         page('limit',50),page('offset',0))});
+      }
+      if (method==='GET' && purchaseDetail){
+        const cardId=purchaseDetail[1]!,purchaseId=purchaseDetail[2]!;
+        const purchase=await getPurchase(database,actor,cardId,purchaseId);
+        if(!purchase)return error(404,'NOT_FOUND');
+        const installments=await getPurchaseInstallments(database,actor,cardId,purchaseId);
+        if(!installments)return error(404,'NOT_FOUND');
+        return json({purchase,installments});
+      }
+      if (method==='GET' && invoiceList){
+        return json({invoices:await listInvoices(database,actor,invoiceList[1]!,
+         page('limit',50),page('offset',0))});
+      }
+      if (method==='GET' && invoiceDetail){
+        const data=await getInvoice(database,actor,invoiceDetail[1]!,invoiceDetail[2]!);
+        return data?json(data):error(404,'NOT_FOUND');
+      }
+      if(method==='POST'&&(path==='/api/cards'||purchaseList)){
+        if(!request.body)return error(400,'INVALID_BODY');
+        const bytes=await readBounded(request,4096);
+        if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+        let raw:unknown;
+        try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+        catch{return error(400,'INVALID_JSON');}
+        if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+        const v=raw as Record<string,unknown>;
+        const keys=Object.keys(v);
+        const allowedBody=new Set(path==='/api/cards'?
+          ['idempotencyKey','name','institution','limit','closingDay','dueDay']:
+          ['idempotencyKey','title','merchant','category','purchasedOn','total','installments']);
+        if(keys.some(key=>!allowedBody.has(key)))return error(400,'INVALID_BODY');
+        if(path==='/api/cards'){
+          if(typeof v.idempotencyKey!=='string'||typeof v.name!=='string'||
+             typeof v.limit!=='string'||typeof v.closingDay!=='number'||
+             typeof v.dueDay!=='number'||
+             (v.institution!==undefined&&v.institution!==null&&typeof v.institution!=='string'))return error(400,'INVALID_BODY');
+          let limit;
+          try{limit=parseCents(v.limit);}catch{return error(400,'INVALID_AMOUNT');}
+          const card=await createCard(database,actor,{
+           idempotencyKey:v.idempotencyKey,name:v.name,institution:v.institution as string|null|undefined,
+           limitCents:limit,closingDay:v.closingDay,dueDay:v.dueDay
+          });
+          return json({card},201);
+        }
+        if(typeof v.idempotencyKey!=='string'||typeof v.title!=='string'||
+           typeof v.purchasedOn!=='string'||typeof v.total!=='string'||
+           typeof v.installments!=='number'||
+           (v.merchant!==undefined&&v.merchant!==null&&typeof v.merchant!=='string')||
+           (v.category!==undefined&&v.category!==null&&typeof v.category!=='string'))return error(400,'INVALID_BODY');
+        let total;
+        try{total=parseCents(v.total);}catch{return error(400,'INVALID_AMOUNT');}
+        const purchase=await createPurchase(database,actor,{
+          cardId:purchaseList![1]!,idempotencyKey:v.idempotencyKey,title:v.title,
+          merchant:v.merchant as string|null|undefined,category:v.category as string|null|undefined,
+          purchasedOn:v.purchasedOn,totalCents:total,installments:v.installments
+        });
+        return json(purchase,201);
+      }
+      return error(404,'NOT_FOUND');
+    }
     if (method === 'GET' && path === '/api/obligations') {
       const query = requestURL.searchParams;
       const pagination = (name: string, fallback: number): number => {
@@ -422,6 +513,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if (cause instanceof CreditCardUnavailable || cause instanceof CreditPurchaseUnavailable) return error(404,'NOT_FOUND');
+    if (cause instanceof CreditIdempotencyConflict) return error(409,'CONFLICT');
+    if (cause instanceof CreditResultTooLarge) return error(413,'RESULT_TOO_LARGE');
     if (cause instanceof ReportAccountNotFound) return error(404,'NOT_FOUND');
     if (cause instanceof ReportTooLargeError) return error(413,'REPORT_TOO_LARGE');
     if (cause instanceof ReportReconciliationError) return error(409,'REPORT_NOT_CONSISTENT');

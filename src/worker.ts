@@ -129,5 +129,19 @@ app.all('/api/reports/export', (c) => {
   );
 });
 
+// Cards, immutable purchases and cycle-derived invoices all share verified auth.
+for(const path of [
+ '/api/cards','/api/cards/:cardId',
+ '/api/cards/:cardId/purchases','/api/cards/:cardId/purchases/:purchaseId',
+ '/api/cards/:cardId/invoices','/api/cards/:cardId/invoices/:cycle',
+]){
+ app.all(path,(c)=>{
+  const auth=createWorkerAuth(c.env);
+  return handleFinancialHttp(c.req.raw,c.env.DB as unknown as FinancialDatabase,
+   async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),
+   configuredOrigin(c.env));
+ });
+}
+
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;
