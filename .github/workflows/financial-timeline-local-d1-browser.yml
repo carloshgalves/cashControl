@@ -1,19 +1,19 @@
-name: c2-trail-local-d1-browser
-# Final UX re-review: ascending timeline, unique headline and fresh selected-alert amounts.
+name: financial-timeline-local-d1-browser
+# Re-review: resolve selected D-5 alerts beyond first 30 paginated events; real Chromium, no deploy.
 on:
   push:
-    branches: [feat/c2-financial-trail-alerts]
-    paths: [.github/workflows/c2-trail-local-d1-browser.yml]
+    branches: [feat/financial-timeline-alerts]
+    paths: [.github/workflows/financial-timeline-local-d1-browser.yml]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: cashcontrol-c2-trail-local-d1
+  group: cashcontrol-c2-local
   cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 16
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,19 +22,17 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
-      - name: TypeScript and production build
+      - name: Compile and test frontend and financial backend
         run: |
-          npm run typecheck
           npm run ui:check
-          npm run ui:build
-          node --check web/tests/browser-e2e.mjs
-      - name: Full backend and frontend unit regression
-        run: |
-          npm test
           npm run ui:test
-      - name: Install headless Chromium
+          npm run ui:build
+          npm run typecheck
+          npm test
+          node --check web/tests/browser-e2e.mjs
+      - name: Install Chromium headless shell
         run: npx playwright install --only-shell chromium
-      - name: Configure ephemeral D1 and real local Better Auth
+      - name: Prepare disposable local D1 and Better Auth
         shell: bash
         run: |
           cp wrangler.toml.example wrangler.toml
@@ -42,24 +40,25 @@ jobs:
           echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
           echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
           echo 'ALLOW_SIGN_UP=true' >> .dev.vars
-      - name: Apply migrations 0001 through 0006 in D1 local
+      - name: Apply migrations 0001 through 0006 on local D1
         run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
-      - name: Start local Worker and production preview
+      - name: Launch local Workerd and production-preview UI
         shell: bash
         run: |
           npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/c2-worker.log 2>&1 &
           echo $! > /tmp/c2-worker.pid
-          npm run ui:preview > /tmp/c2-vite.log 2>&1 &
-          echo $! > /tmp/c2-vite.pid
-      - name: Chromium E2E with actual D1, two sessions and trail interactions
+          npm run ui:preview > /tmp/c2-frontend.log 2>&1 &
+          echo $! > /tmp/c2-frontend.pid
+      - name: Real authenticated C2 browser journey and regressions
         run: npm run ui:e2e
-      - name: Stop disposable processes
+      - name: Stop services and clear temporary auth environment
         if: always()
         shell: bash
         run: |
-          for file in /tmp/c2-worker.pid /tmp/c2-vite.pid; do
+          for file in /tmp/c2-worker.pid /tmp/c2-frontend.pid; do
             if [ -f "$file" ]; then kill "$(cat "$file")" 2>/dev/null || true; fi
           done
-      - name: No deploy
+          rm -f .dev.vars
+      - name: No remote resource used
         if: always()
-        run: echo "NO_DEPLOY; NO_REMOTE_D1; NO_REAL_USER_DATA"
+        run: echo 'LOCAL_ONLY; NO_REMOTE_D1; NO_DEPLOY; WORKERS_CPU_NOT_MEASURED'

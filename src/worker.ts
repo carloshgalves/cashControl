@@ -107,13 +107,12 @@ app.all('/api/dashboard', (c) => {
   );
 });
 
-// Chronological financial trail and in-app due stages, scoped to verified session.
-for (const path of ['/api/trail', '/api/due-alerts']) {
+// Paginated financial trail and in-app D-10/D-5 warnings.
+for (const path of ['/api/timeline', '/api/alerts']) {
   app.all(path, (c) => {
     const auth = createWorkerAuth(c.env);
     return handleFinancialHttp(
-      c.req.raw,
-      c.env.DB as unknown as FinancialDatabase,
+      c.req.raw, c.env.DB as unknown as FinancialDatabase,
       async (headers) => auth.api.getSession({ headers, query: { disableCookieCache: true } }),
       configuredOrigin(c.env),
     );

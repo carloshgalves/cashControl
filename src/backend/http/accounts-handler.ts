@@ -5,7 +5,7 @@ import { createObligation, getObligation, listObligations, listObligationPayment
 import { createInternalTransfer, getInternalTransfer, listInternalTransfers } from '../transfers/transfers.ts';
 import { cancelUnpaidObligation, getExpenseRefund, listExpenseRefunds, refundPaidExpense } from '../compensations/compensations.ts';
 import { getDashboard } from '../dashboard/dashboard.ts';
-import { listTrail, listDueAlerts, type TrailFilter } from '../trail/trail.ts';
+import { listTimeline, listDueAlerts } from '../timeline/timeline.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -62,34 +62,34 @@ export async function handleFinancialHttp(
 
   try {
     const path = requestURL.pathname;
-    if (method === 'GET' && (path === '/api/trail' || path === '/api/due-alerts')) {
+    if (method === 'GET' && (path === '/api/timeline' || path === '/api/alerts')) {
       const query = requestURL.searchParams;
-      const allowed = path === '/api/trail'
-        ? ['from', 'to', 'asOf', 'status', 'limit', 'offset']
-        : ['asOf', 'limit', 'offset'];
-      let invalid = false;
+      const allowed = path === '/api/timeline'
+        ? new Set(['from', 'to', 'asOf', 'status', 'limit', 'offset'])
+        : new Set(['asOf', 'limit', 'offset']);
+      let unknown = false;
       query.forEach((_value, name) => {
-        if (!allowed.includes(name) || query.getAll(name).length !== 1) invalid = true;
+        if (!allowed.has(name) || query.getAll(name).length > 1) unknown = true;
       });
-      if (invalid) return error(400, 'INVALID_FILTER');
+      if (unknown) return error(400, 'INVALID_FILTER');
       const asOf = query.get('asOf');
-      if (asOf === null) return error(400, 'INVALID_DATE');
-      const page = (name: string, fallback: number): number => {
+      if (!asOf) return error(400, 'INVALID_PERIOD');
+      const number = (name: string, fallback: number) => {
         const raw = query.get(name);
         if (raw === null) return fallback;
         if (!/^(?:0|[1-9]\d{0,6})$/.test(raw)) throw new TypeError('Invalid pagination');
         return Number(raw);
       };
-      if (path === '/api/due-alerts') {
+      if (path === '/api/alerts') {
         return json(await listDueAlerts(database, actor, {
-          asOf, limit: page('limit',40), offset: page('offset',0),
+          asOf, limit: number('limit', 20), offset: number('offset', 0),
         }));
       }
       const from = query.get('from'), to = query.get('to');
-      if (from === null || to === null) return error(400, 'INVALID_DATE');
-      return json(await listTrail(database, actor, {
-        from, to, asOf, status: (query.get('status') ?? 'all') as TrailFilter,
-        limit: page('limit',40), offset: page('offset',0),
+      if (!from || !to) return error(400, 'INVALID_PERIOD');
+      return json(await listTimeline(database, actor, {
+        from, to, asOf, status: query.get('status') ?? 'all',
+        limit: number('limit', 30), offset: number('offset', 0),
       }));
     }
     if (method === 'GET' && path === '/api/dashboard') {

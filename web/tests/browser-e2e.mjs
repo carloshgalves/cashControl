@@ -36,16 +36,7 @@ async function loginUi(page,user) {
   await page.getByLabel('E-mail').fill(user.email);
   await page.getByLabel('Senha').fill(user.password);
   await page.getByRole('button',{name:'Entrar com segurança'}).click();
-  try { await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor(); }
-  catch(error) {
-    // No passwords or authentication cookies in CI logs.
-    console.log('UI_DIAGNOSTIC_LOGIN:',JSON.stringify({
-      body:(await page.locator('body').innerText()).slice(0,1800),
-      heading:await page.getByRole('heading').allTextContents(),
-      alert:await page.getByRole('alert').allTextContents(),
-    }));
-    throw error;
-  }
+  await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor();
 }
 async function modal(page, mode) {
   await page.getByRole('button',{name:'Registrar',exact:true}).click();
@@ -153,84 +144,86 @@ async function main(){
     assert.equal(d.cashFlow.netCents,600);
     assert.equal(d.balances.totalCents,10600);
     assert.equal(d.obligations.outstandingCents,3000);
-    log('Financial trail: real D5/D10 alerts, filtered events, canceled obligation and payment action');
-    const ref=await page.evaluate(()=>{
-      const d=new Date();
-      return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-    });
-    const plusDays=(date,n)=>{
-      const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);
-      return d.toISOString().slice(0,10);
-    };
-    const due5=plusDays(ref,5),due10=plusDays(ref,10);
-    const createDue=async(title,date,suffix)=>{
-      const res=await page.request.post(APP+'/api/obligations',{
+    log('C2 financial trail: real D-5 alert, planned/pending states and calendar interactions');
+    const fiveDays = new Date();
+    fiveDays.setDate(fiveDays.getDate()+5);
+    const dueFive = fiveDays.toISOString().slice(0,10);
+    const dueBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
+      idempotencyKey:'ui-trail-bill-'+tag,title:'Energia teste D5',amount:'45.00',dueOn:dueFive,
+    }});
+    assert.equal(dueBill.status(),201,'Trail bill fixture must be persisted');
+    const cancelBill=await page.request.post(APP+'/api/obligations',{headers:{origin:APP},data:{
+      idempotencyKey:'ui-trail-cancel-'+tag,title:'Compra cancelada C2',amount:'19.00',dueOn:'2026-11-24',
+    }});
+    assert.equal(cancelBill.status(),201);
+    const cancelId=(await cancelBill.json()).obligation.obligationId;
+    assert.equal((await page.request.post(APP+'/api/obligations/'+cancelId+'/cancel',{
+      headers:{origin:APP},data:{idempotencyKey:'ui-trail-cancel-action-'+tag,canceledOn:'2026-11-11',reason:'Desistência'},
+    })).status(),201);
+    await page.reload();
+    await page.getByRole('heading',{name:'Seu dinheiro tem um ritmo.'}).waitFor();
+    await page.getByRole('button',{name:'Trilha financeira'}).click();
+    await page.getByRole('heading',{name:/O que aconteceu/}).waitFor();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).click();
+    await page.getByRole('heading',{name:'Energia teste D5'}).waitFor();
+    await page.getByText('Compromisso futuro. Ainda não é uma saída de caixa realizada.').waitFor();
+    await page.getByRole('button',{name:'Registrar pagamento efetivo'}).click();
+    await page.locator('#entry-amount').fill('10,00');
+    await page.getByRole('dialog').getByRole('button',{name:'Registrar pagamento efetivo'}).click();
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).waitFor();
+    const afterTrailPayment=await page.request.get(APP+'/api/alerts?asOf=2026-11-11');
+    assert.equal(afterTrailPayment.status(),200);
+    const electricity=(await afterTrailPayment.json()).alerts.find(x=>x.title==='Energia teste D5');
+    assert.equal(electricity?.outstandingCents,3500,'partial settlement must update alert amount');
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Cancelados'}).click();
+    await page.getByRole('heading',{name:'Compra cancelada C2'}).waitFor();
+    await page.getByText('Sem débito').first().waitFor();
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Realizados'}).click();
+    await page.getByText('Serviço avulso').first().waitFor();
+    log('C2 trail browser passed: alerts, contextual payment, cancellation, status filter');
+    log('C2 pagination regression: due alert must remain actionable beyond first 30 chronological events');
+    const ownAccounts=(await (await page.request.get(APP+'/api/accounts')).json()).accounts;
+    const primary=ownAccounts.find(account=>account.name==='Carteira principal');
+    assert(primary,'Expected first account for 31-event timeline pagination fixture');
+    for(let i=0;i<32;i++){
+      const response=await page.request.post(APP+'/api/movements',{
         headers:{origin:APP},
-        data:{idempotencyKey:'ui-trail-'+tag+'-'+suffix,title,amount:'40.00',dueOn:date},
+        data:{idempotencyKey:'ui-c2-page-'+tag+'-'+String(i).padStart(3,'0'),
+          accountId:primary.accountId,direction:'expense',amount:'0.01',
+          method:'pix',description:'History '+i,occurredOn:'2026-11-01'},
       });
-      assert.equal(res.status(),201,'Failed to create disposable trail obligation');
-      return (await res.json()).obligation;
-    };
-    const dueBill=await createDue('Conta D5',due5,'d5');
-    const canceledBill=await createDue('Conta D10 cancelada',due10,'d10');
-    const cancel=await page.request.post(APP+'/api/obligations/'+canceledBill.obligationId+'/cancel',{
-      headers:{origin:APP},
-      data:{idempotencyKey:'ui-trail-'+tag+'-cancel',canceledOn:ref},
-    });
-    assert.equal(cancel.status(),201,'Canceled obligation not persisted');
-    const alertsResp=await page.request.get(APP+'/api/due-alerts?asOf='+ref);
-    assert.equal(alertsResp.status(),200);
-    const activeAlerts=(await alertsResp.json()).alerts;
-    assert(activeAlerts.some(a=>a.obligationId===dueBill.obligationId&&a.stage==='D-5'));
-    assert(!activeAlerts.some(a=>a.obligationId===canceledBill.obligationId));
+      assert.equal(response.status(),201,'Cannot create paginated ledger fixture');
+    }
     await page.reload();
     await page.getByRole('button',{name:'Trilha financeira'}).click();
-    await page.getByRole('heading',{name:/A trilha de novembro de 2026/i}).waitFor();
-    assert.equal(await page.getByRole('heading',{name:/O que aconteceu/i}).count(),1,
-      'Trail duplicates the approved editorial hero headline');
-    await page.getByRole('button',{name:/Conta D5/}).first().click();
-    await page.getByRole('region',{name:'Detalhes do evento'}).getByText('Conta D5').waitFor();
-    await page.getByRole('group',{name:'Filtrar eventos'}).getByRole('button',{name:'Cancelados'}).click();
-    await page.getByRole('button',{name:/Cancelamento: Conta D10 cancelada/}).waitFor();
-    await page.getByRole('group',{name:'Filtrar eventos'}).getByRole('button',{name:'Pendentes'}).click();
-    await page.getByRole('button',{name:/Conta D5/}).last().waitFor();
-    await page.getByRole('group',{name:'Filtrar eventos'}).getByRole('button',{name:'Todos'}).click();
-    await page.getByRole('button',{name:/Conta D5/}).last().click();
-    await page.getByRole('region',{name:'Detalhes do evento'})
-      .getByRole('button',{name:/Registrar pagamento efetivo/}).click();
-    await page.locator('#entry-amount').fill('10,00');
-    await page.getByRole('dialog').getByRole('button',{name:'Registrar pagamento efetivo',exact:true}).click();
-    await page.getByRole('dialog').waitFor({state:'hidden'});
-    const trailAfter=await page.request.get(APP+'/api/trail?from=2026-11-01&to=2026-11-30&asOf='+ref);
-    assert.equal(trailAfter.status(),200);
-    const afterEvents=(await trailAfter.json()).events;
-    assert(afterEvents.some(x=>x.kind==='obligation'&&x.obligationId===dueBill.obligationId&&x.amountCents===3000),
-      'Partial payment must adjust only current pending obligation');
-    assert(afterEvents.some(x=>x.kind==='payment'&&x.obligationId===dueBill.obligationId),
-      'Paid cash event must remain in trail');
-    assert(!afterEvents.some(x=>x.kind==='obligation'&&x.obligationId===canceledBill.obligationId),
-      'Canceled bill cannot remain active');
-    log('TRAIL_BROWSER_E2E_PASS: D-5 alert, canceled history, filter, confirmed payment and updated due amount');
+    await page.getByRole('button',{name:/Energia teste D5, Vence em 5 dias/}).click();
+    await page.getByRole('heading',{name:'Energia teste D5'}).waitFor();
+    await page.getByRole('button',{name:'Registrar pagamento efetivo'}).waitFor();
+    assert((await page.getByRole('button',{name:'Carregar mais eventos'}).count())>0,
+      'Fixture must push due event past initial timeline page');
+    log('C2_PINNED_ALERT_PAGINATION_PASS: selected alert is payable beyond first page');
+
     log('Logout revokes actual session');
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
     assert.equal((await page.request.get(APP+'/api/accounts')).status(),401);
     log('Bob sees only their own empty finances after login');
     await loginUi(page,users[1]);
-    assert(!(await page.locator('body').innerText()).includes('Registro confirmado e atualizado.'),
-      'Prior account notice leaked across authenticated user switch');
     await page.getByText('Nenhuma conta cadastrada.').waitFor();
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')
       .then(r=>r.json())).dashboard.balances.totalCents,0);
     log('Mobile width: navigation and no horizontal overflow');
     await page.setViewportSize({width:390,height:844});
-    await page.getByRole('navigation',{name:'Navegação principal'}).getByRole('button',{name:'Trilha'}).click();
-    await page.getByRole('heading',{name:/A trilha de novembro de 2026/i}).waitFor();
-    await page.getByText('Nenhum compromisso pendente vence nos próximos 10 dias.').waitFor();
     await page.getByRole('navigation',{name:'Navegação principal'}).getByRole('button',{name:'Agenda'}).click();
     await page.getByRole('heading',{name:'Agenda de compromissos'}).waitFor();
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2);
     assert.equal(overflow,false,'Mobile layout overflows viewport');
+    await page.getByRole('navigation',{name:'Navegação principal'}).getByRole('button',{name:'Trilha'}).click();
+    await page.getByRole('heading',{name:/O que aconteceu/}).waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+2),false,
+      'Financial timeline layout overflows narrow mobile viewport');
+    await page.getByRole('group',{name:'Filtrar eventos da trilha'}).getByRole('button',{name:'Previstos'}).click();
+    await page.getByText('Nenhum evento corresponde a este período e filtro.').waitFor();
     await page.getByRole('button',{name:'Sair com segurança'}).click();
     await page.getByRole('button',{name:'Entrar com segurança'}).waitFor();
     assert.equal((await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).status(),401,

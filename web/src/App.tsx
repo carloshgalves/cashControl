@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, allPages, getSession, login, logout, request, snapshot } from './api.ts';
+import { AlertPreview, TimelineScreen } from './Trail.tsx';
 import type { Account, Obligation, Movement, Session, Dashboard } from './api.ts';
-import { TrailView } from './TrailView.tsx';
 import {
   money, parseAmount, monthBounds, monthLabel, shiftMonth, today, weekOf, weekRange,
   groupWeeks, validateWeekReconciliation, timeline, dueOn, accountBalancePreview,
@@ -339,17 +339,17 @@ export function App() {
   const calendarDays = new Date(Date.UTC(year,monthNumber,0)).getUTCDate();
   const emptySlots = new Date(Date.UTC(year,monthNumber-1,1)).getUTCDay();
 
-  function resetWorkspace() {
-    // Financial data are fetched from the current verified session, but view
-    // selection and notices must not survive an identity switch either.
-    setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
-    setSelectedDay(null); setSelectedAccount(null); setExpandedBill(null);
-    setModal(null); setNotice(''); setError(''); setData(null);
-  }
   async function signOut() {
     if (signingOut) return;
     setSigningOut(true);
-    try { await logout(); resetWorkspace(); setSession(null); }
+    try {
+      await logout();
+      setSession(null); setData(null); setModal(null); setError('');
+      // Never retain the previous user's navigation, selected account/day or
+      // financial context when a different session signs in on this tab.
+      setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
+      setSelectedAccount(null); setSelectedDay(null); setExpandedBill(null); setNotice('');
+    }
     catch (cause) { setNotice(readableError(cause)); }
     finally { setSigningOut(false); }
   }
@@ -365,7 +365,11 @@ export function App() {
   function moveTo(next: View) { setView(next); setNotice(''); }
 
   if (session === undefined) return <div className="auth-page"><div className="loading-mark" role="status">Verificando sessão segura…</div></div>;
-  if (!session) return <Login onSuccess={value => { resetWorkspace(); setSession(value); }}/>;
+  if (!session) return <Login onSuccess={value => {
+    setView('overview'); setSelectedAccount(null); setSelectedDay(null);
+    setExpandedBill(null); setWeek(1); setMonth(today().slice(0,7));
+    setSession(value); setData(null); setError(''); setNotice('');
+  }}/>;
 
   return <div className="app-shell">
     <aside className="sidebar">
@@ -391,15 +395,15 @@ export function App() {
             <Icon>＋</Icon> Registrar
           </button></div>
       </header>
-      <div className={view==='trail' ? 'heading trail-heading' : 'heading'}>
+      <div className="heading">
         <div><span className="eyebrow">Seu panorama financeiro</span><h1>{
           view==='overview' ? 'Seu dinheiro tem um ritmo.' :
             view==='movement' ? 'A história do seu dinheiro.' :
-            view==='trail' ? 'O que aconteceu. O que vem a seguir.' :
+            view==='trail' ? 'Sua trilha financeira.' :
             view==='calendar' ? 'O que vem pela frente.' : 'Onde está seu dinheiro.'
         }</h1><p>{view==='overview' ? 'O que mudou, o que vem e onde você pode agir.' :
           view==='movement' ? 'Entradas, saídas, reembolsos e transferências sem dupla contagem.' :
-          view==='trail' ? 'Eventos financeiros, alertas e vencimentos na mesma sequência.' :
+          view==='trail' ? 'Eventos reais, compromissos futuros e vencimentos para explorar.' :
           view==='calendar' ? 'Compromissos futuros, sem confundir vencimento com pagamento.' :
           'O dinheiro muda de lugar sem virar uma nova receita.'}</p></div>
         <div className="period-control" aria-label="Mês de referência">
@@ -413,6 +417,9 @@ export function App() {
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {data && !loading && !error && <>
+        {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
+        {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
+          onPay={bill=>setModal({mode:'pay',bill})}/>}
         {view==='overview' && <div className="grid-main">
           <div className="main-column">
             <section className="balance-panel" aria-labelledby="balance-title">
@@ -495,15 +502,6 @@ export function App() {
             <div className="finance-note"><Icon>ⓘ</Icon><span>O saldo é atual. As obrigações em aberto e as movimentações do mês são indicadores distintos.</span></div>
           </div>
         </div>}
-        {view==='trail' && <TrailView
-          month={month} accounts={accounts} refreshKey={refreshKey}
-          onChangeMonth={next=>{setMonth(next);setWeek(1);setSelectedDay(null);}}
-          onPay={obligationId=>{
-            const bill=data.obligations.find(o=>o.obligationId===obligationId && o.outstandingCents>0);
-            if(bill)setModal({mode:'pay',bill});
-            else {setNotice('Obrigação atualizada ou indisponível.');setRefreshKey(x=>x+1);}
-          }}
-        />}
         {view==='movement' && <section className="flow-panel wide-section">
           <div className="section-head"><div><h2>Trilha do dinheiro</h2><p>Eventos reais registrados em {monthLabel(month)}.</p></div>
             <button className="primary-btn" disabled={!accounts.length} onClick={()=>setModal({mode:'expense'})}>＋ Novo movimento</button></div>
