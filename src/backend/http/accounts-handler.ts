@@ -5,7 +5,7 @@ import { createObligation, getObligation, listObligations, listObligationPayment
 import { createInternalTransfer, getInternalTransfer, listInternalTransfers } from '../transfers/transfers.ts';
 import { cancelUnpaidObligation, getExpenseRefund, listExpenseRefunds, refundPaidExpense } from '../compensations/compensations.ts';
 import { getDashboard } from '../dashboard/dashboard.ts';
-import { listTrail, listDueAlerts } from '../trail/trail.ts';
+import { listTrail, listDueAlerts, type TrailFilter } from '../trail/trail.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -88,7 +88,7 @@ export async function handleFinancialHttp(
       const from = query.get('from'), to = query.get('to');
       if (from === null || to === null) return error(400, 'INVALID_DATE');
       return json(await listTrail(database, actor, {
-        from, to, asOf, status: query.get('status') ?? 'all',
+        from, to, asOf, status: (query.get('status') ?? 'all') as TrailFilter,
         limit: page('limit',40), offset: page('offset',0),
       }));
     }
