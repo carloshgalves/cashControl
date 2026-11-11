@@ -391,7 +391,7 @@ export function App() {
             <Icon>＋</Icon> Registrar
           </button></div>
       </header>
-      <div className="heading">
+      <div className={view==='trail' ? 'heading trail-heading' : 'heading'}>
         <div><span className="eyebrow">Seu panorama financeiro</span><h1>{
           view==='overview' ? 'Seu dinheiro tem um ritmo.' :
             view==='movement' ? 'A história do seu dinheiro.' :
