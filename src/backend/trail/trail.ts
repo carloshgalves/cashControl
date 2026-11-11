@@ -111,7 +111,7 @@ const TRAIL_SQL = [
 ' account_id, obligation_id, related_movement_id, created_at',
 ' FROM events WHERE event_date BETWEEN ? AND ?',
 " AND (? = 'all' OR (? = 'scheduled' AND timing = 'scheduled') OR status = ?)",
-' ORDER BY event_date DESC, created_at DESC, kind DESC, id DESC',
+' ORDER BY event_date ASC, created_at ASC, kind ASC, id ASC',
 ' LIMIT ? OFFSET ?',
 ].join('\n');
 
