@@ -34,3 +34,5 @@ Essa regra operacional foi escolhida e registrada para tornar D1 testável e det
 - Segurança e prontidão de produção: o teste local verifica autorização e transação, não demonstra limite CPU Free hospedado, backup/restore, auditoria WCAG ou carga. Não utilizar dados bancários sensíveis, nem fazer deploy até esses gates.
 
 **Parecer de implementação:** íntegra na suíte local/CI revisada; aguarda revisão visual humana e merge manual. Issue #19 continua aberta até integração em `main`.
+
+**Revisão adversarial adicional — dados sensíveis:** não existem campos de PAN/CVV. Entretanto, a revisão encontrou que texto livre poderia receber acidentalmente um número completo de cartão. A validação agora rejeita sequências de 13 a 19 dígitos (com espaços/hífens) que passem no algoritmo de Luhn em nomes, instituição e demais rótulos, sem armazená-las nem registrá-las em logs. Testes cobrem PAN válido e identificador longo legítimo.

@@ -45,10 +45,27 @@ function actorId(actor:AuthenticatedActor):string{
 function key(value:unknown):asserts value is string{
  if(typeof value!=='string'||!KEY.test(value))throw new TypeError('Invalid idempotency key');
 }
+// Do not accept a full payment-card PAN smuggled into free-text labels.
+// Luhn keeps ordinary long reference numbers from being rejected blindly.
+function containsLikelyPan(text:string):boolean{
+ const candidates=text.match(/(?:\d[ -]?){12,18}\d/g)??[];
+ return candidates.some(value=>{
+  const digits=value.replace(/\D/g,'');
+  if(digits.length<13||digits.length>19)return false;
+  let checksum=0,double=false;
+  for(let i=digits.length-1;i>=0;i--){
+   let digit=Number(digits[i]);
+   if(double){digit*=2;if(digit>9)digit-=9;}
+   checksum+=digit;double=!double;
+  }
+  return checksum%10===0;
+ });
+}
 function label(v:unknown,max:number,required:boolean):string|null{
  if(v===undefined||v===null){if(required)throw new TypeError('Missing label');return null;}
  if(typeof v!=='string'||/[\x00-\x1F\x7F]/.test(v)||v.trim().length>max||
-   (required&&v.trim().length<1) || (!required && v.trim().length<1))throw new TypeError('Invalid label');
+   (required&&v.trim().length<1) || (!required && v.trim().length<1) ||
+   containsLikelyPan(v))throw new TypeError('Invalid label');
  return v.trim();
 }
 function cardView(v:CardRow):CardView{

@@ -215,3 +215,15 @@ test('HTTP route validates origin, owner, input and prevents foreign resource en
  })).status,400);
  assert.equal(db.raw.prepare('SELECT count(*) n FROM posted_cash_movements').get().n,0);
 }));
+
+
+test('free-text card fields reject Luhn-valid full PAN-like values, including embedded/space-grouped numbers',()=>withDb(async db=>{
+ await assert.rejects(()=>createCard(db,actor('alice'),cardInput('no-pan',{name:'Principal 4111 1111 1111 1111'}),clock),TypeError);
+ await assert.rejects(()=>createCard(db,actor('alice'),cardInput('no-pan-inst',{institution:'4111111111111111'}),clock),TypeError);
+ const card=await createTestCard(db);
+ await assert.rejects(()=>createPurchase(db,actor('alice'),purchaseInput(card.cardId,'no-pan-merchant',{merchant:'4111-1111-1111-1111'}),clock),TypeError);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM credit_purchases').get().n,0);
+ // Valid long identifiers without Luhn check digits are not automatically flagged.
+ const good=await createCard(db,actor('alice'),cardInput('legitimate-reference',{name:'Cartão referência 1234567890123456'}),clock);
+ assert.equal(good.name,'Cartão referência 1234567890123456');
+}));
