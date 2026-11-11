@@ -78,7 +78,8 @@ interface FormDraft {
 function freshDraft(accounts: Account[], mode: EntryMode, bill?: Obligation): FormDraft {
   // D1 may return same-second accounts in UUID order, not by the order the
   // person created them. Transfers must never default to the same account.
-  const source = mode === 'transfer'
+  const needsDebit = mode === 'transfer' || mode === 'expense' || mode === 'pay';
+  const source = needsDebit
     ? (accounts.find(account => account.balanceCents > 0) ?? accounts[0])
     : accounts[0];
   const destination = accounts.find(account => account.accountId !== source?.accountId);
