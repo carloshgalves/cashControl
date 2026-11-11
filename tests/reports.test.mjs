@@ -305,7 +305,7 @@ test('adversarial W120 titles and W80 account names stay in PDF columns and page
   direction:'income',amountCents:cents('8'),method:'pix',
   description:title,occurredOn:'2026-11-10',
  },clock);
- const pdf=await makeReport(db,actor('alice'),options({format:'pdf'}));
+ const pdf=await makeReport(db,actor('alice'),options({format:'pdf',accountId:a.accountId}));
  const runs=pdfRuns(pdf.bytes);
  assert(runs.length>15,'PDF text operands should be parsable independently');
  const titleRuns=runs.filter(row=>row.x===216&&/^W+$/.test(row.text));
