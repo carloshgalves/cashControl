@@ -72,3 +72,11 @@ test('preview does not mutate source balances or allow invalid value to be displ
   assert.equal(accountBalancePreview(account,'12,345','expense'),null);
   assert.equal(account.balanceCents,2500);
 });
+
+
+test('BRL presentation preserves all centavos of large invoice aggregates without float conversion',()=>{
+ assert.equal(money(9_000_000_000_000_001),'R$\u00a090.000.000.000.000,01');
+ assert.equal(money(-9_000_000_000_000_001),'-R$\u00a090.000.000.000.000,01');
+ assert.equal(money(Number.MAX_SAFE_INTEGER),'R$\u00a090.071.992.547.409,91');
+ assert.throws(()=>money(Number.MAX_SAFE_INTEGER+1),RangeError);
+});
