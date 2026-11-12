@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { createAccount,getAccount } from '../src/backend/accounts/accounts.ts';
+import { createObligation } from '../src/backend/obligations/obligations.ts';
 import { createCard,createPurchase,getInvoice,listInvoices,CreditIdempotencyConflict } from '../src/backend/cards/cards.ts';
 import { payInvoice,listInvoicePayments,CreditInvoiceInsufficient,
  CreditInvoiceUnavailable } from '../src/backend/cards/invoice-payments.ts';
@@ -248,4 +249,61 @@ test('D2 audit guard rejects forged origin, double use of old obligation debit, 
  assert.throws(()=>direct(refundedKey,refunded,3),/CARD_INVOICE_MOVEMENT_ALREADY_USED/);
  assert.equal(db.raw.prepare('SELECT count(*) n FROM card_invoice_payments').get().n,0);
  assert.equal((await getInvoice(db,actor(who),f.card.cardId,'2026-11')).invoice.outstandingCents,150000);
+}));
+
+
+test('D2 consolidation: two card purchases one invoice, distinct ordinary payable, consistent timeline and report',()=>withDb(async db=>{
+ const f=await setup(db);
+ await createPurchase(db,actor('alice'),{
+  idempotencyKey:key('extra-purchase'),cardId:f.card.cardId,
+  title:'Item adicional',purchasedOn:'2026-11-12',totalCents:10000,installments:1,
+ },clock);
+ const ordinary=await createObligation(db,actor('alice'),{
+  idempotencyKey:key('ordinary-payable'),title:'Serviço em dezembro',totalCents:30000,
+  dueOn:'2026-12-05',
+ },clock);
+ assert.equal(ordinary.outstandingCents,30000);
+ const dec={from:'2026-12-01',to:'2026-12-31'},asOf='2026-11-11';
+ let dashboard=await getDashboard(db,actor('alice'),dec);
+ assert.deepEqual([dashboard.cardInvoices.openCount,dashboard.cardInvoices.outstandingCents,
+  dashboard.cardInvoices.dueInPeriodCount,dashboard.cardInvoices.dueInPeriodCents],[1,160000,1,160000]);
+ assert.equal(dashboard.obligations.dueInPeriodCents,30000);
+ let events=(await listTimeline(db,actor('alice'),{...dec,asOf,limit:100})).events;
+ assert.equal(events.length,2,'one due event per invoice, plus one ordinary payable');
+ const invoiceEvent=events.find(e=>e.id.startsWith('card-invoice:'));
+ assert(invoiceEvent);
+ assert.equal(invoiceEvent.amountCents,160000);
+ assert.equal(invoiceEvent.relatedId,f.card.cardId);
+ assert.equal(invoiceEvent.obligationId,null,'card invoice must not be forged as ordinary payable');
+ assert.equal(invoiceEvent.status,'planned');
+ const f1=await makeReport(db,actor('alice'),{...dec,asOf,format:'xlsx',status:'all'});
+ assert.equal(f1.rows,2,'report exports each commitment once');
+ await payInvoice(db,actor('alice'),input(f,'partial-consolidation','900.00'),clock);
+ dashboard=await getDashboard(db,actor('alice'),dec);
+ assert.equal(dashboard.cardInvoices.outstandingCents,70000);
+ assert.equal(dashboard.obligations.outstandingCents,30000);
+ events=(await listTimeline(db,actor('alice'),{...dec,asOf,limit:100})).events;
+ assert.equal(events.find(e=>e.id.startsWith('card-invoice:')).amountCents,70000);
+ const f2=await makeReport(db,actor('alice'),{...dec,asOf,format:'pdf',status:'all'});
+ assert.equal(f2.rows,2);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,90000);
+ const currentCash=(await listTimeline(db,actor('alice'),{...period,asOf,limit:100})).events;
+ assert.equal(currentCash.length,1);
+ assert.equal(currentCash[0].kind,'payment','settlement must not masquerade as another consumption purchase');
+ const realized=await makeReport(db,actor('alice'),{...report,status:'realized'});
+ assert.equal(realized.rows,1,'one confirmed outflow, no duplicate installment or purchase');
+ await payInvoice(db,actor('alice'),input(f,'final-consolidation','700.00'),clock);
+ dashboard=await getDashboard(db,actor('alice'),dec);
+ assert.deepEqual([dashboard.cardInvoices.openCount,dashboard.cardInvoices.outstandingCents],[0,0]);
+ assert.equal(dashboard.obligations.outstandingCents,30000);
+ events=(await listTimeline(db,actor('alice'),{...dec,asOf,limit:100})).events;
+ assert.equal(events.length,1,'fully paid invoice cannot remain as outstanding');
+ assert.equal(events[0].obligationId,ordinary.obligationId);
+ const f3=await makeReport(db,actor('alice'),{...dec,asOf,format:'xlsx',status:'all'});
+ assert.equal(f3.rows,1);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,160000);
+ const bob=await getDashboard(db,actor('bob'),dec);
+ assert.deepEqual([bob.cardInvoices.outstandingCents,bob.obligations.outstandingCents],[0,0]);
+ assert.deepEqual((await listTimeline(db,actor('bob'),{...dec,asOf,limit:100})).events,[]);
+ assert.equal((await makeReport(db,actor('bob'),{...dec,asOf,format:'pdf',status:'all'})).rows,0);
 }));
