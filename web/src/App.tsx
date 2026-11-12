@@ -430,7 +430,7 @@ export function App() {
         {view==='cards' && <CardScreen accounts={accounts} onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}} onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
         {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
-          onPay={bill=>setModal({mode:'pay',bill})} onExport={status=>setReportPreset(status)}/>}
+          onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onExport={status=>setReportPreset(status)}/>}
         {view==='overview' && <div className="grid-main">
           <div className="main-column">
             <section className="balance-panel" aria-labelledby="balance-title">

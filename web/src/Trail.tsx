@@ -13,8 +13,8 @@ function errorMessage(cause: unknown) {
     'Não foi possível consultar os eventos. Os valores não foram estimados. Tente novamente.';
 }
 function visualDay(date: string) { return date.slice(8,10); }
-function EventDetails({ event, asOf, onPay, obligation }: {
-  event: TrailEvent | null; asOf: string; onPay: (bill: Obligation) => void; obligation?: Obligation;
+function EventDetails({ event, asOf, onPay, onCards, obligation }: {
+  event: TrailEvent | null; asOf: string; onPay: (bill: Obligation) => void; onCards:()=>void; obligation?: Obligation;
 }) {
   if (!event) return <article className="trail-detail"><span className="eyebrow">Detalhes</span>
     <p className="trail-empty">Selecione um evento para ver as informações.</p></article>;
@@ -44,7 +44,9 @@ function EventDetails({ event, asOf, onPay, obligation }: {
     {obligation && <button className="primary-btn trail-pay" type="button" onClick={() => onPay(obligation)}>
       Registrar pagamento efetivo <span aria-hidden="true">↗</span>
     </button>}
-    {event.kind === 'obligation' && !obligation && <p className="trail-hint">Este compromisso não possui valor pendente para pagamento.</p>}
+    {event.kind==='obligation' && !obligation && event.id.startsWith('card-invoice:')&&
+      <button type="button" className="primary-btn trail-pay" onClick={onCards}>Abrir fatura de cartão e pagar →</button>}
+    {event.kind === 'obligation' && !obligation && !event.id.startsWith('card-invoice:') && <p className="trail-hint">Este compromisso não possui valor pendente para pagamento.</p>}
   </article>;
 }
 export function AlertPreview({ onExplore, refreshKey }: { onExplore: () => void; refreshKey: number }) {
@@ -78,8 +80,8 @@ export function AlertPreview({ onExplore, refreshKey }: { onExplore: () => void;
   </section>;
 }
 
-export function TimelineScreen({ month, obligations, onPay, onExport, refreshKey }: {
-  month: string; obligations: Obligation[]; onPay: (bill: Obligation) => void;
+export function TimelineScreen({ month, obligations, onPay, onCards, onExport, refreshKey }: {
+  month: string; obligations: Obligation[]; onPay: (bill: Obligation) => void; onCards:()=>void;
   onExport: (status: TrailFilter) => void; refreshKey: number;
 }) {
   const asOf = today();
@@ -242,7 +244,7 @@ export function TimelineScreen({ month, obligations, onPay, onExport, refreshKey
         {loadingMore ? 'Carregando…' : 'Carregar mais eventos'}</button>}
     </section>
     <div className="trail-bottom">
-      <EventDetails event={detailEvent} asOf={asOf} onPay={onPay} obligation={activeObligation}/>
+      <EventDetails event={detailEvent} asOf={asOf} onPay={onPay} onCards={onCards} obligation={activeObligation}/>
       <section className="trail-calendar" aria-label="Navegador de datas">
         <div className="trail-cal-head"><h3>{monthLabel(month)}, em um olhar</h3><span>Selecione um dia</span></div>
         <div className="trail-day-grid">{['D','S','T','Q','Q','S','S'].map((label,i)=>
