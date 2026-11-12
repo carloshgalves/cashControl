@@ -482,7 +482,7 @@ export function App() {
           </div>
           <div className="right-column">
             <section className="horizon">
-              <div className="section-head"><h2>O que vem pela frente</h2><span className="count">{allPending.length} pendente(s)</span></div>
+              <div className="section-head"><h2>O que vem pela frente</h2><span className="count">{allPending.length} conta(s) pendente(s)</span></div>
               <div className="date-rail">{Array.from({length:7},(_,i)=>Math.min(calendarDays,(monthlyBills[0] ? Number(monthlyBills[0].dueOn.slice(8)) : 1)+i))
                 .filter((date,i,all)=>all.indexOf(date)===i).map(day=>{
                   const date=month+'-'+String(day).padStart(2,'0');
@@ -508,7 +508,12 @@ export function App() {
               </div>) : <div className="empty-state">Nenhum vencimento pendente neste mês.</div>}
               <div className="horizon-total"><span>Total pendente · todos os meses</span>
                 <strong>{money(data.dashboard.obligations.outstandingCents)}</strong></div>
-              <button className="text-btn" onClick={()=>moveTo('calendar')}>Abrir agenda completa →</button>
+              {data.dashboard.cardInvoices.openCount>0&&<div className="horizon-total">
+                <span>Faturas de cartão em aberto · {data.dashboard.cardInvoices.openCount} ciclo(s)</span>
+                <strong>{money(data.dashboard.cardInvoices.outstandingCents)}</strong>
+              </div>}
+              {data.dashboard.cardInvoices.openCount>0&&<button className="text-btn" onClick={()=>moveTo('cards')}>Ver faturas e pagamentos →</button>}
+              <button className="text-btn" onClick={()=>moveTo('calendar')}>Abrir agenda de contas comuns →</button>
             </section>
             <div className="finance-note"><Icon>ⓘ</Icon><span>O saldo é atual. As obrigações em aberto e as movimentações do mês são indicadores distintos.</span></div>
           </div>

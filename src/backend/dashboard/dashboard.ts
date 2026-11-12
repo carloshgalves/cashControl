@@ -40,6 +40,10 @@ export interface DashboardView {
     dueInPeriodCount: number;
     dueInPeriodCents: number;
   };
+  cardInvoices: {
+    basis: 'current_outstanding';openCount:number;outstandingCents:number;
+    dueInPeriodCount:number;dueInPeriodCents:number;
+  };
   expectations: {
     status: 'not_implemented';
   };
@@ -58,6 +62,8 @@ interface DashboardRow {
   open_count: number;
   due_in_period_cents: number;
   due_in_period_count: number;
+  card_outstanding_cents:number;card_open_count:number;
+  card_due_in_period_cents:number;card_due_in_period_count:number;
 }
 function ownerOf(actor: AuthenticatedActor): string {
   if (!actor || typeof actor.userId !== 'string' || !actor.userId.trim() || actor.userId.length > 128) {
@@ -129,13 +135,23 @@ const DASHBOARD_QUERY = [
   '     COUNT(CASE WHEN outstanding_cents > 0',
   '       AND due_on BETWEEN ? AND ? THEN 1 END) AS due_in_period_count',
   '   FROM financial_obligation_balances WHERE owner_user_id = ?',
+  ' ),',
+  ' card_due AS (',
+  '   SELECT',
+  '     COALESCE(SUM(CASE WHEN outstanding_cents > 0 THEN outstanding_cents ELSE 0 END),0) AS card_outstanding_cents,',
+  '     COUNT(CASE WHEN outstanding_cents > 0 THEN 1 END) AS card_open_count,',
+  '     COALESCE(SUM(CASE WHEN outstanding_cents > 0 AND due_on BETWEEN ? AND ? THEN outstanding_cents ELSE 0 END),0) AS card_due_in_period_cents,',
+  '     COUNT(CASE WHEN outstanding_cents > 0 AND due_on BETWEEN ? AND ? THEN 1 END) AS card_due_in_period_count',
+  '   FROM credit_invoice_balances WHERE owner_user_id = ?',
   ' )',
   ' SELECT accounts.account_id, accounts.display_name, accounts.kind,',
   '   accounts.currency, accounts.balance_cents,',
   '   flow.income_cents, flow.expense_cents, flow.refund_cents,',
   '   due.outstanding_cents, due.open_count,',
-  '   due.due_in_period_cents, due.due_in_period_count',
-  ' FROM flow CROSS JOIN due LEFT JOIN accounts ON 1=1',
+  '   due.due_in_period_cents, due.due_in_period_count,',
+  '   card_due.card_outstanding_cents,card_due.card_open_count,',
+  '   card_due.card_due_in_period_cents,card_due.card_due_in_period_count',
+  ' FROM flow CROSS JOIN due CROSS JOIN card_due LEFT JOIN accounts ON 1=1',
   ' ORDER BY accounts.account_id',
 ].join('\n');
 
@@ -156,6 +172,7 @@ export async function getDashboard(
     period.from, period.to,
     period.from, period.to,
     owner,
+    period.from, period.to,period.from, period.to,owner,
   ).all<DashboardRow>();
   // The aggregate CTEs always yield one row, even for an owner with no data.
   const first = result.results[0];
@@ -170,6 +187,12 @@ export async function getDashboard(
   if (dueCents > obligationsTotal || dueCount > openCount) {
     throw new RangeError('Inconsistent obligation totals');
   }
+  const creditOutstanding=safeInteger(first.card_outstanding_cents,false,'card outstanding');
+  const creditOpen=safeInteger(first.card_open_count,false,'card open count');
+  const creditDue=safeInteger(first.card_due_in_period_cents,false,'card due in period');
+  const creditDueCount=safeInteger(first.card_due_in_period_count,false,'card due count');
+  if(creditDue>creditOutstanding||creditDueCount>creditOpen)
+    throw new RangeError('Inconsistent credit invoice totals');
 
   const accounts: DashboardAccount[] = [];
   let totalCents = 0;
@@ -177,7 +200,9 @@ export async function getDashboard(
     if (row.income_cents !== income || row.expense_cents !== expenses ||
         row.refund_cents !== refunds || row.outstanding_cents !== obligationsTotal ||
         row.open_count !== openCount || row.due_in_period_cents !== dueCents ||
-        row.due_in_period_count !== dueCount) {
+        row.due_in_period_count !== dueCount ||
+        row.card_outstanding_cents!==creditOutstanding||row.card_open_count!==creditOpen||
+        row.card_due_in_period_cents!==creditDue||row.card_due_in_period_count!==creditDueCount) {
       throw new Error('Dashboard snapshot contains inconsistent aggregates');
     }
     if (row.account_id === null) continue;
@@ -205,6 +230,10 @@ export async function getDashboard(
       basis: 'current_outstanding',
       openCount, outstandingCents: obligationsTotal,
       dueInPeriodCount: dueCount, dueInPeriodCents: dueCents,
+    },
+    cardInvoices:{
+      basis:'current_outstanding',openCount:creditOpen,outstandingCents:creditOutstanding,
+      dueInPeriodCount:creditDueCount,dueInPeriodCents:creditDue,
     },
     expectations: { status: 'not_implemented' },
   };
