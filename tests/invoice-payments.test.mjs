@@ -45,7 +45,7 @@ class Db {
 }
 async function withDb(fn){const db=new Db();try{return await fn(db);}finally{db.close();}}
 const actor=id=>({userId:id}),clock=()=>new Date('2026-11-11T13:00:00Z');
-const key=s=>'d2-key-'+s;
+const key=s=>'d2-invoice-key-'+s;
 const cent=parseCents;
 async function setup(db,owner='alice',cash='2000.00'){
  const account=await createAccount(db,actor(owner),{
