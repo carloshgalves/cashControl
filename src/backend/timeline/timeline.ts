@@ -111,7 +111,7 @@ const EVENT_SQL = [
   " SELECT 'movement:' || m.movement_id AS event_id,",
   ' m.occurred_on AS event_date,',
   " CASE WHEN r.refund_id IS NOT NULL THEN 'refund'",
-  "      WHEN p.payment_id IS NOT NULL THEN 'payment'",
+  "      WHEN p.payment_id IS NOT NULL OR cp.payment_id IS NOT NULL THEN 'payment'",
   '      ELSE m.direction END AS event_kind,',
   " 'realized' AS event_status, m.description AS title,",
   ' m.amount_cents AS amount_cents, m.account_id AS account_id,',
@@ -122,6 +122,8 @@ const EVENT_SQL = [
   '   AND r.refund_movement_id = m.movement_id',
   ' LEFT JOIN financial_obligation_payments p ON p.owner_user_id = m.owner_user_id',
   '   AND p.movement_id = m.movement_id',
+  ' LEFT JOIN card_invoice_payments cp ON cp.owner_user_id = m.owner_user_id',
+  '   AND cp.movement_id = m.movement_id',
   ' WHERE m.owner_user_id = ?',
   ' UNION ALL',
   " SELECT 'transfer:' || t.transfer_id, t.transferred_on,",
@@ -136,6 +138,14 @@ const EVENT_SQL = [
   ' FROM financial_obligation_balances o',
   ' WHERE o.owner_user_id = ? AND o.outstanding_cents > 0 AND o.cancellation_id IS NULL',
   ' UNION ALL',
+  ' UNION ALL',
+  " SELECT 'card-invoice:' || v.card_id || ':' || v.invoice_cycle, v.due_on,",
+  " 'obligation', CASE WHEN v.due_on > ? THEN 'planned' WHEN v.due_on < ? THEN 'overdue' ELSE 'pending' END,",
+  " 'Fatura: ' || c.display_name || ' (' || v.invoice_cycle || ')',",
+  ' v.outstanding_cents, NULL, NULL, v.card_id, c.created_at',
+  ' FROM credit_invoice_balances v',
+  ' JOIN credit_cards c ON c.owner_user_id = v.owner_user_id AND c.card_id = v.card_id',
+  ' WHERE v.owner_user_id = ? AND v.outstanding_cents > 0',
   " SELECT 'cancellation:' || c.cancellation_id, c.canceled_on,",
   " 'cancellation', 'canceled', o.title, 0, NULL, c.obligation_id, NULL, c.created_at",
   ' FROM obligation_cancellations c',
@@ -159,7 +169,7 @@ export async function listTimeline(db: FinancialDatabase, actor: AuthenticatedAc
   options: TimelineOptions): Promise<TimelinePage> {
   const who = owner(actor), { status, limit, offset } = checkOptions(options);
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, options.asOf, who, who,
+    who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
     options.from, options.to, status, status, null, null, null, limit + 1, offset,
   ).all<EventRow>();
   const events = rows.results.slice(0, limit).map((r): TimelineEvent => {
@@ -240,7 +250,7 @@ export async function readExportTimeline(
     throw new TypeError('Invalid account id');
   }
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, options.asOf, who, who,
+    who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
     options.from, options.to, status, status, account, account, account,
     maxEvents + 1, 0,
   ).all<EventRow>();
