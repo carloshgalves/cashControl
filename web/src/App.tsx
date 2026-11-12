@@ -427,7 +427,7 @@ export function App() {
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {data && !loading && !error && <>
-        {view==='cards' && <CardScreen onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
+        {view==='cards' && <CardScreen accounts={accounts} onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}} onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
         {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
           onPay={bill=>setModal({mode:'pay',bill})} onExport={status=>setReportPreset(status)}/>}

@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { ApiError, allPages, request } from './api.ts';
+import type { Account } from './api.ts';
 import { money, parseAmount, friendlyDate, monthLabel, today } from './finance.ts';
 import './cards.css';
+import { InvoicePaymentPanel } from './InvoicePaymentPanel.tsx';
 
 type Card={cardId:string;name:string;institution:string|null;limitCents:number;closingDay:number;dueDay:number};
 type Purchase={purchaseId:string;title:string;merchant:string|null;purchasedOn:string;totalCents:number;installments:number};
 type Installment={purchaseId:string;title:string;installmentNo:number;installments:number;cycle:string;dueOn:string;amountCents:number};
-type Invoice={cycle:string;dueOn:string;totalCents:number;installmentCount:number;purchaseCount:number};
+type Invoice={cardId:string;cycle:string;dueOn:string;totalCents:number;paidCents:number;outstandingCents:number;state:'open'|'partially_paid'|'paid';installmentCount:number;purchaseCount:number};
 type Detail={installments:Installment[];invoice?:Invoice;purchase?:Purchase};
 type FormKind='card'|'purchase'|null;
 
-export function CardScreen({onUnauthorized}:{onUnauthorized:()=>void}){
+export function CardScreen({onUnauthorized,accounts,onPaid}:{onUnauthorized:()=>void;accounts:Account[];onPaid:()=>void}){
  const [cards,setCards]=useState<Card[]>([]),[selected,setSelected]=useState<string|null>(null);
  const [invoices,setInvoices]=useState<Invoice[]>([]),[purchases,setPurchases]=useState<Purchase[]>([]);
  const [detail,setDetail]=useState<Detail|null>(null),[form,setForm]=useState<FormKind>(null);
@@ -86,7 +88,7 @@ export function CardScreen({onUnauthorized}:{onUnauthorized:()=>void}){
  return <section className="credit-screen">
   <div className="credit-title"><div><span className="eyebrow">SPEC-004 · Cartões e faturas</span>
    <h2>Crédito, sem inventar dinheiro.</h2>
-   <p>Compras parceladas criam compromissos em ciclos mensais, sem debitar seu banco.</p></div>
+   <p>Compras geram compromissos; pagamentos parciais ou integrais debitam apenas o valor confirmado.</p></div>
    <button type="button" className="primary-btn" onClick={()=>{setForm('card');setError('');}}>＋ Novo cartão</button></div>
   {notice&&<p className="credit-notice" role="status">{notice}</p>}
   {error&&<p role="alert" className="form-error">{error} <button className="text-btn" onClick={()=>setRefresh(n=>n+1)}>Tentar novamente</button></p>}
@@ -106,7 +108,7 @@ export function CardScreen({onUnauthorized}:{onUnauthorized:()=>void}){
     <label>Parcelas<input type="number" required min={1} max={60} value={count} onChange={e=>setCount(e.target.value)}/></label></div>
     <label>Valor total em reais<input required inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="100,01"/></label>
    </>}
-   <p className="small-note">Não informe número de cartão ou CVV. A compra não movimenta dinheiro; o pagamento de fatura será implementado na D2.</p>
+   <p className="small-note">Não informe número de cartão ou CVV. A compra não movimenta dinheiro; o pagamento registrado confirma o débito.</p>
    <div className="credit-actions"><button type="submit" className="primary-btn" disabled={busy}>{busy?'Registrando…':'Confirmar registro'}</button>
    <button type="button" className="outline-btn" disabled={busy} onClick={()=>setForm(null)}>Cancelar</button></div>
   </form>}
@@ -126,7 +128,7 @@ export function CardScreen({onUnauthorized}:{onUnauthorized:()=>void}){
     <div className="credit-panel"><h3>Faturas por ciclo</h3>{!invoices.length&&<p className="small-note">Nenhuma fatura registrada.</p>}
      {invoices.map(i=><button key={i.cycle} className="credit-item" disabled={detailBusy} type="button"
       onClick={()=>void openDetail('/api/cards/'+card.cardId+'/invoices/'+i.cycle)}>
-      <span><strong>{monthLabel(i.cycle)}</strong><small>Vence {friendlyDate(i.dueOn)} · {i.installmentCount} parcelas</small></span><b>{money(i.totalCents)}</b></button>)}</div>
+      <span><strong>{monthLabel(i.cycle)}</strong><small>Vence {friendlyDate(i.dueOn)} · {i.installmentCount} parcelas · {i.state==='paid'?'Quitada':i.state==='partially_paid'?'Parcialmente paga':'Em aberto'}</small></span><b>{money(i.outstandingCents)} pendente</b></button>)}</div>
     <div className="credit-panel"><h3>Compras registradas</h3>{!purchases.length&&<p className="small-note">Nenhuma compra neste cartão.</p>}
      {purchases.map(p=><button key={p.purchaseId} className="credit-item" disabled={detailBusy} type="button"
       onClick={()=>void openDetail('/api/cards/'+card.cardId+'/purchases/'+p.purchaseId)}>
@@ -138,9 +140,9 @@ export function CardScreen({onUnauthorized}:{onUnauthorized:()=>void}){
     {detail.installments.map((i,index)=><div className="credit-installment" key={i.purchaseId+'-'+i.installmentNo+'-'+index}>
      <span><strong>{i.title}</strong><small>Parcela {i.installmentNo}/{i.installments} · {monthLabel(i.cycle)} · venc. {friendlyDate(i.dueOn)}</small></span>
      <b>{money(i.amountCents)}</b></div>)}
-    {detail.invoice&&<p className="credit-total">Total da fatura: <strong>{money(detail.invoice.totalCents)}</strong></p>}
+    {detail.invoice&&<InvoicePaymentPanel key={detail.invoice.cardId+'-'+detail.invoice.cycle} invoice={detail.invoice} accounts={accounts} onPaid={onPaid} onUnauthorized={onUnauthorized}/>}
    </section>}
-   <p className="credit-disclaimer">Compromissos de cartão não são saídas de caixa confirmadas. Até a entrega D2, estes valores ficam disponíveis aqui, separados do total de obrigações do dashboard principal, e não podem ser marcados como pagos.</p>
+   <p className="credit-disclaimer">Compras a crédito geram compromissos, não débitos bancários. Pagamentos de fatura debitam uma vez no fluxo de caixa. O painel geral de obrigações ainda mostra apenas compromissos comuns; para o saldo das faturas, consulte esta seção.</p>
   </>}
  </section>;
 }
