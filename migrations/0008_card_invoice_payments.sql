@@ -81,3 +81,18 @@ CREATE TRIGGER card_payment_movement_no_delete BEFORE DELETE ON posted_cash_move
 WHEN EXISTS (
  SELECT 1 FROM card_invoice_payments p WHERE p.owner_user_id=OLD.owner_user_id AND p.movement_id=OLD.movement_id
 ) BEGIN SELECT RAISE(ABORT,'CARD_PAYMENT_MOVEMENT_IMMUTABLE'); END;
+
+-- An invoice debit may not also settle an unrelated ordinary obligation:
+-- otherwise one bank outflow would count as two extinguished debts.
+CREATE TRIGGER card_payment_not_obligation BEFORE INSERT ON financial_obligation_payments
+WHEN EXISTS (
+ SELECT 1 FROM card_invoice_payments p
+ WHERE p.owner_user_id=NEW.owner_user_id AND p.movement_id=NEW.movement_id
+) BEGIN SELECT RAISE(ABORT,'CARD_PAYMENT_CANNOT_SETTLE_OTHER_DEBT'); END;
+-- Until chargeback/reversal semantics for invoice payments are specified,
+-- generic cash-refund cannot credit the account without reopening the debt.
+CREATE TRIGGER card_payment_no_generic_refund BEFORE INSERT ON cash_refunds
+WHEN EXISTS (
+ SELECT 1 FROM card_invoice_payments p
+ WHERE p.owner_user_id=NEW.owner_user_id AND p.movement_id=NEW.original_movement_id
+) BEGIN SELECT RAISE(ABORT,'CARD_PAYMENT_REQUIRES_SPECIAL_REVERSAL'); END;
