@@ -57,6 +57,14 @@ BEGIN
    AND m.direction='expense' AND m.amount_cents=NEW.amount_cents
    AND m.account_id=NEW.account_id AND m.payment_method=NEW.method
    AND m.occurred_on=NEW.paid_on
+   AND m.creation_key='card-payment:' || NEW.creation_key
+ );
+ SELECT RAISE(ABORT,'CARD_INVOICE_MOVEMENT_ALREADY_USED') WHERE EXISTS (
+  SELECT 1 FROM financial_obligation_payments op
+  WHERE op.owner_user_id=NEW.owner_user_id AND op.movement_id=NEW.movement_id
+ ) OR EXISTS (
+  SELECT 1 FROM cash_refunds rf
+  WHERE rf.owner_user_id=NEW.owner_user_id AND rf.original_movement_id=NEW.movement_id
  );
  SELECT RAISE(ABORT,'CARD_INVOICE_OVERPAID_OR_MISSING')
  WHERE NEW.amount_cents > COALESCE((

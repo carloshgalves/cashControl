@@ -96,6 +96,8 @@ export async function payInvoice(db:FinancialDatabase,actor:AuthenticatedActor,
  catch(e){
   const committed=await replay();
   if(committed)return committed;
+  if(e instanceof Error&&e.message.includes('CARD_INVOICE_OVERPAID_OR_MISSING'))
+   throw new CreditInvoiceInsufficient();
   throw e; // Both statements rolled back on overpay, concurrent conflict or bad account.
  }
  const row=await db.prepare('SELECT * FROM card_invoice_payments WHERE owner_user_id=? AND payment_id=?')

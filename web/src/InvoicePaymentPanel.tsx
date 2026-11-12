@@ -21,6 +21,11 @@ export function InvoicePaymentPanel({invoice,accounts,onPaid,onUnauthorized}:{
  const [amount,setAmount]=useState(''),[method,setMethod]=useState<PaymentMethod>('pix');
  const [paidOn,setPaidOn]=useState(today());
  const key=useRef(crypto.randomUUID());
+ // Keep the same key only when retrying unchanged data after a network error.
+ // Any field edit starts a new logical payment request.
+ function edit<T>(setter:(value:T)=>void,value:T){
+  key.current=crypto.randomUUID();setter(value);setError('');
+ }
  const endpoint='/api/cards/'+invoice.cardId+'/invoices/'+invoice.cycle+'/payments';
 
  useEffect(()=>{
@@ -89,19 +94,27 @@ export function InvoicePaymentPanel({invoice,accounts,onPaid,onUnauthorized}:{
   {open&&<form className="credit-form" aria-label="Pagar fatura" onSubmit={submit}>
    <h3>Confirmar pagamento de fatura</h3>
    <p className="small-note">Este pagamento gera somente uma saída de caixa; a compra no crédito não foi debitada.</p>
-   <label>Conta de débito<select required value={accountId} onChange={e=>setAccountId(e.target.value)}>
+   <label>Conta de débito<select required value={accountId} onChange={e=>edit(setAccountId,e.target.value)}>
     <option value="">Selecione uma conta</option>
     {accounts.map(a=><option key={a.accountId} value={a.accountId}>{a.name} · {money(a.balanceCents)}</option>)}
    </select></label>
-   <label>Valor do pagamento em reais<input required inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="900,00"/></label>
+   <label>Valor do pagamento em reais<input required inputMode="decimal" value={amount} onChange={e=>edit(setAmount,e.target.value)} placeholder="900,00"/></label>
    <div className="credit-two">
-    <label>Meio de pagamento<select value={method} onChange={e=>setMethod(e.target.value as PaymentMethod)}>
+    <label>Meio de pagamento<select value={method} onChange={e=>edit(setMethod,e.target.value as PaymentMethod)}>
      <option value="pix">Pix</option><option value="cash">Espécie</option>
      <option value="debit">Débito</option><option value="bank_transfer">Transferência externa</option>
     </select></label>
-    <label>Data do pagamento<input required type="date" value={paidOn} onChange={e=>setPaidOn(e.target.value)}/></label>
+    <label>Data do pagamento<input required type="date" value={paidOn} onChange={e=>edit(setPaidOn,e.target.value)}/></label>
    </div>
    <p className="small-note">Pendente antes desta baixa: {money(invoice.outstandingCents)}. Um pagamento parcial mantém o restante em aberto.</p>
+   {(() => {
+     const source=accounts.find(a=>a.accountId===accountId);
+     const decimal=parseAmount(amount);
+     const parts=decimal?.split('.')??[];
+     const cents=decimal?Number(parts[0])*100+Number((parts[1]??'').padEnd(2,'0')):0;
+     return source&&cents>source.balanceCents?
+      <p className="form-error">A baixa fará o saldo desta conta ficar negativo. Registre apenas pagamentos que realmente ocorreram.</p>:null;
+   })()}
    <div className="credit-actions">
     <button className="primary-btn" disabled={busy} type="submit">{busy?'Registrando…':'Confirmar pagamento'}</button>
     <button className="outline-btn" disabled={busy} type="button" onClick={()=>setOpen(false)}>Cancelar</button>
