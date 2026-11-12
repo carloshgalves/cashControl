@@ -132,6 +132,8 @@ test('D2 two concurrent different keys cannot overpay the same invoice; failure 
  ]);
  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
  assert.equal(results.filter(x=>x.status==='rejected').length,1);
+ assert(results.find(x=>x.status==='rejected').reason instanceof CreditInvoiceInsufficient,
+  'conflicting concurrent payment must return a typed overpayment error');
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM card_invoice_payments').get().n,1);
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,1);
  const invoice=await getInvoice(db,actor('alice'),f.card.cardId,'2026-11');
@@ -212,4 +214,38 @@ test('D2 HTTP authenticates session, Origin, strict amount, query, ownership and
  assert.equal(history.status,200);
  assert.equal((await history.json()).payments.length,1);
  assert.equal((await getAccount(db,actor('alice'),f.account.accountId)).balanceCents,110000);
+}));
+
+
+test('D2 audit guard rejects forged origin, double use of old obligation debit, and pre-refunded movement',()=>withDb(async db=>{
+ const f=await setup(db),who='alice';
+ const debtId='00000000-0000-4000-8000-000000000101';
+ db.raw.prepare('INSERT INTO financial_obligations(owner_user_id,obligation_id,creation_key,title,total_cents,due_on,created_at) VALUES(?,?,?,?,?,?,?)')
+  .run(who,debtId,key('preexisting-debt'),'Outro compromisso',10000,'2026-11-25',clock().toISOString());
+ const insertExpense=(suffix,originalKey)=>{
+  const id='00000000-0000-4000-8000-'+String(1000+suffix).padStart(12,'0');
+  db.raw.prepare("INSERT INTO posted_cash_movements(owner_user_id,movement_id,creation_key,account_id,direction,amount_cents,payment_method,description,category,occurred_on,created_at) VALUES(?,?,?,?,'expense',?,'pix','Pagamento','Teste',?,?)")
+   .run(who,id,originalKey,f.account.accountId,10000,'2026-11-11',clock().toISOString());
+  return id;
+ };
+ const direct=(paymentKey,movementId,suffix)=>{
+  db.raw.prepare('INSERT INTO card_invoice_payments(owner_user_id,payment_id,creation_key,card_id,invoice_cycle,movement_id,account_id,amount_cents,method,paid_on,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)')
+   .run(who,'00000000-0000-4000-8000-'+String(2000+suffix).padStart(12,'0'),
+    paymentKey,f.card.cardId,'2026-11',movementId,f.account.accountId,10000,'pix','2026-11-11',clock().toISOString());
+ };
+ const notReserved=insertExpense(1,key('ordinary-origin'));
+ assert.throws(()=>direct(key('forged'),notReserved,1),/CARD_INVOICE_PAYMENT_MISMATCH/);
+ const linkedKey=key('already-obligation'),linked=insertExpense(2,'card-payment:'+linkedKey);
+ db.raw.prepare('INSERT INTO financial_obligation_payments(owner_user_id,payment_id,creation_key,obligation_id,movement_id,amount_cents,created_at) VALUES(?,?,?,?,?,?,?)')
+  .run(who,'00000000-0000-4000-8000-000000000104',key('existing-payment'),debtId,linked,10000,clock().toISOString());
+ assert.throws(()=>direct(linkedKey,linked,2),/CARD_INVOICE_MOVEMENT_ALREADY_USED/);
+ const refundedKey=key('already-refunded'),refunded=insertExpense(3,'card-payment:'+refundedKey);
+ const refundMovement='00000000-0000-4000-8000-000000000106';
+ db.raw.prepare("INSERT INTO posted_cash_movements(owner_user_id,movement_id,creation_key,account_id,direction,amount_cents,payment_method,description,category,occurred_on,created_at) VALUES(?,?,?,?,'income',?,'pix','Devolução','Reembolso',?,?)")
+  .run(who,refundMovement,'cash-refund:'+key('credit-return'),f.account.accountId,10000,'2026-11-12',clock().toISOString());
+ db.raw.prepare('INSERT INTO cash_refunds(owner_user_id,refund_id,creation_key,original_movement_id,refund_movement_id,amount_cents,refunded_on,created_at) VALUES(?,?,?,?,?,?,?,?)')
+  .run(who,'00000000-0000-4000-8000-000000000107',key('credit-return'),refunded,refundMovement,10000,'2026-11-12',clock().toISOString());
+ assert.throws(()=>direct(refundedKey,refunded,3),/CARD_INVOICE_MOVEMENT_ALREADY_USED/);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM card_invoice_payments').get().n,0);
+ assert.equal((await getInvoice(db,actor(who),f.card.cardId,'2026-11')).invoice.outstandingCents,150000);
 }));
