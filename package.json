@@ -18,7 +18,8 @@
     "ui:test": "node --experimental-strip-types --test web/tests/*.test.mjs",
     "ui:e2e": "node web/tests/browser-e2e.mjs",
     "ui:preview": "vite preview --config web/vite.config.ts --host 127.0.0.1 --port 5173 --strictPort",
-    "d1:e2e": "node web/tests/cards-browser-e2e.mjs"
+    "d1:e2e": "node web/tests/cards-browser-e2e.mjs",
+    "d2:e2e": "node web/tests/invoice-payments-browser-e2e.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

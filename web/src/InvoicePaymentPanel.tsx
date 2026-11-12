@@ -22,9 +22,9 @@ export function InvoicePaymentPanel({invoice,accounts,onPaid,onUnauthorized}:{
  const [paidOn,setPaidOn]=useState(today());
  const key=useRef(crypto.randomUUID());
  const endpoint='/api/cards/'+invoice.cardId+'/invoices/'+invoice.cycle+'/payments';
- const abort=useRef<AbortController|null>(null);
+
  useEffect(()=>{
-  const controller=new AbortController();abort.current=controller;
+  const controller=new AbortController();
   setLoading(true);setPayments([]);setError('');setOpen(false);
   allPages<Payment>(endpoint,'payments',controller.signal).then(list=>{
    if(!controller.signal.aborted)setPayments(list);
