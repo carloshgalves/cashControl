@@ -12,6 +12,8 @@ import { createCard, listCards, getCard, createPurchase, listPurchases, getPurch
  getPurchaseInstallments, listInvoices, getInvoice,
  CreditCardUnavailable, CreditPurchaseUnavailable, CreditIdempotencyConflict,
  CreditResultTooLarge } from '../cards/cards.ts';
+import { payInvoice, listInvoicePayments, CreditInvoiceUnavailable,
+ CreditInvoiceInsufficient } from '../cards/invoice-payments.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -265,6 +267,7 @@ export async function handleFinancialHttp(
       const purchaseDetail=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/purchases\/([0-9a-f-]{36})$/);
       const invoiceList=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices$/);
       const invoiceDetail=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices\/(\d{4}-\d{2})$/);
+      const paymentPath=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices\/(\d{4}-\d{2})\/payments$/);
       const page=(name:string,defaultValue:number)=>{
         const raw=requestURL.searchParams.get(name);
         if(raw===null)return defaultValue;
@@ -272,7 +275,7 @@ export async function handleFinancialHttp(
         return Number(raw);
       };
       const allowed=method==='GET'&&
-        (purchaseList!==null||invoiceList!==null)?new Set(['limit','offset']):new Set<string>();
+        (purchaseList!==null||invoiceList!==null||paymentPath!==null)?new Set(['limit','offset']):new Set<string>();
       let unknownQuery=false;
       requestURL.searchParams.forEach((_value,key)=>{
         if(!allowed.has(key)||requestURL.searchParams.getAll(key).length!==1)unknownQuery=true;
@@ -302,6 +305,32 @@ export async function handleFinancialHttp(
       if (method==='GET' && invoiceDetail){
         const data=await getInvoice(database,actor,invoiceDetail[1]!,invoiceDetail[2]!);
         return data?json(data):error(404,'NOT_FOUND');
+      }
+      if (method==='GET'&&paymentPath){
+        return json({payments:await listInvoicePayments(database,actor,paymentPath[1]!,paymentPath[2]!,
+          page('limit',50),page('offset',0))});
+      }
+      if (method==='POST'&&paymentPath){
+        if(!request.body)return error(400,'INVALID_BODY');
+        const bytes=await readBounded(request,4096);
+        if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+        let raw:unknown;
+        try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+        catch{return error(400,'INVALID_JSON');}
+        if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+        const p=raw as Record<string,unknown>,keys=Object.keys(p);
+        if(keys.some(k=>!['idempotencyKey','accountId','amount','method','paidOn'].includes(k))||
+          typeof p.idempotencyKey!=='string'||typeof p.accountId!=='string'||
+          typeof p.amount!=='string'||typeof p.paidOn!=='string'||
+          (p.method!=='cash'&&p.method!=='pix'&&p.method!=='debit'&&p.method!=='bank_transfer'))
+          return error(400,'INVALID_BODY');
+        let amount;
+        try{amount=parseCents(p.amount);}catch{return error(400,'INVALID_AMOUNT');}
+        const payment=await payInvoice(database,actor,{
+          idempotencyKey:p.idempotencyKey,cardId:paymentPath[1]!,cycle:paymentPath[2]!,
+          accountId:p.accountId,amountCents:amount,method:p.method,paidOn:p.paidOn
+        });
+        return json({payment},201);
       }
       if(method==='POST'&&(path==='/api/cards'||purchaseList)){
         if(!request.body)return error(400,'INVALID_BODY');
@@ -515,7 +544,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
-    if (cause instanceof CreditCardUnavailable || cause instanceof CreditPurchaseUnavailable) return error(404,'NOT_FOUND');
+    if (cause instanceof CreditCardUnavailable || cause instanceof CreditPurchaseUnavailable ||
+      cause instanceof CreditInvoiceUnavailable) return error(404,'NOT_FOUND');
+    if (cause instanceof CreditInvoiceInsufficient) return error(409,'INVOICE_OVERPAYMENT');
     if (cause instanceof CreditIdempotencyConflict) return error(409,'CONFLICT');
     if (cause instanceof CreditResultTooLarge) return error(413,'RESULT_TOO_LARGE');
     if (cause instanceof ReportAccountNotFound) return error(404,'NOT_FOUND');
