@@ -25,7 +25,7 @@ As DEC registram **o que foi aprovado** em discussões de produto. Não são ADR
 - Dashboard backend: [PR #36](https://github.com/carloshgalves/cashControl/pull/36), mesclada, com dados em centavos e isolamento por usuário.
 - Dashboard interativo React/Vite: [PR #37](https://github.com/carloshgalves/cashControl/pull/37), mesclada, aprovada visualmente e validada no Chromium.
 - Trilha financeira e avisos in-app D-10/D-5: Issue #17 concluída; PRs #38/#39 mescladas na `main`.
-- Exportação privada XLSX/PDF: Issue #18 implementada na [PR #40](https://github.com/carloshgalves/cashControl/pull/40), ainda Draft para revisão visual e merge manual.
+- Exportação privada XLSX/PDF: [PR #40](https://github.com/carloshgalves/cashControl/pull/40) mesclada em `main`; revisar o estado da Issue #18 separadamente.
 - Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo.
 
 O documento de decisões é a fonte atual das regras de negócio acordadas. Mudanças devem ser explicitadas e vinculadas à decisão que modificam.
@@ -54,6 +54,16 @@ Na interface, use **Exportar** ou **Exportar filtro** na trilha. Selecione perí
 
 Endpoint: `GET /api/reports/export?format=xlsx|pdf&from=AAAA-MM-DD&to=AAAA-MM-DD&asOf=AAAA-MM-DD&status=all` (filtro `accountId` opcional). Transferências próprias não são receita, pagamentos de obrigações não são duplicados e pendências não representam saída de caixa. Arquivos com mais de 2.000 eventos falham explicitamente (413).
 
-Validação: `npm test`, `npm run ui:test`, `npm run ui:build`, `npm run ui:e2e` com Worker, D1 e Chromium locais. Exportações usam nomes distintos por filtros, cabeçalhos PDF com quebra e limites medidos por fonte, além de rótulos em português. **Última revisão adversarial aprovada nas baterias locais: 129 backend + 16 frontend + Chromium real.** [Relatório C3](docs/implementation/FINANCIAL-EXPORT-C3-REVIEW.md). **PR Draft para aceite visual, sem deploy.**
+Validação: `npm test`, `npm run ui:test`, `npm run ui:build`, `npm run ui:e2e` com Worker, D1 e Chromium locais. Exportações usam nomes distintos por filtros, cabeçalhos PDF com quebra e limites medidos por fonte, além de rótulos em português. **Última revisão adversarial aprovada nas baterias locais: 129 backend + 16 frontend + Chromium real.** [Relatório C3](docs/implementation/FINANCIAL-EXPORT-C3-REVIEW.md). **PR #40 mesclada em `main`; sem deploy de produção.**
 
 A geração de XLSX/PDF utiliza formatação exata para totais elevados: no Excel, montantes superiores ao limite seguro de precisão numérica são exportados como **texto monetário** para não perder centavos (e não devem ser somados automaticamente). O E2E usa data civil fixa e não depende do mês de execução. Consulte o relatório C3 para as regressões da terceira revisão adversarial.
+
+## Cartões de crédito e parcelas — D1 / SPEC-004 (PR de revisão)
+
+Nova navegação **Cartões**, opcional, com cadastro de apelido, instituição, limite informado e dias de fechamento/vencimento. Compras com valor total em centavos e 1–60 parcelas geram ciclos mensais consultáveis por compra ou por fatura. Crédito não incrementa saldo; compra não cria saída bancária.
+
+**Regra documentada:** compra até o dia efetivo de fechamento entra no ciclo do próprio mês; após o fechamento, entra no seguinte. Fechamento/vencimento em dia inexistente usam o último dia civil do mês. Vencimento posterior ao fechamento efetivo fica no mesmo mês do ciclo; caso contrário, no mês seguinte. Partes dividem centavos exatamente: primeiros índices recebem o resto (R$100,01 em 10x: R$10,01 + 9 × R$10,00).
+
+API autenticada: `GET/POST /api/cards`, `GET /api/cards/{id}`, `GET/POST /api/cards/{id}/purchases`, `GET /api/cards/{id}/purchases/{purchaseId}`, `GET /api/cards/{id}/invoices`, `GET /api/cards/{id}/invoices/{AAAA-MM}`. IDs de outro titular retornam 404. Compra e parcelas são imutáveis e criadas em lote transacional, com chave de idempotência por titular.
+
+**Atenção ao recorte:** pagamentos de fatura (D2 / #20), conciliação (D3 / #21), alteração de dia, estornos, antecipação e integração de compromissos de cartão aos totais do dashboard/exportação ficam para contratos posteriores; a tela identifica essa separação para evitar valores enganosos. Consulte [relatório técnico de D1](docs/implementation/CREDIT-CARDS-D1-REVIEW.md). Sem deploy remoto nem dados reais na homologação.
