@@ -354,7 +354,7 @@ export function App() {
       // Never retain the previous user's navigation, selected account/day or
       // financial context when a different session signs in on this tab.
       setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
-      setSelectedAccount(null); setSelectedDay(null); setExpandedBill(null); setNotice('');
+      setSelectedAccount(null); setSelectedDay(null); setExpandedBill(null); setCardJump(null); setNotice('');
     }
     catch (cause) { setNotice(readableError(cause)); }
     finally { setSigningOut(false); }
@@ -377,7 +377,7 @@ export function App() {
   if (!session) return <Login onSuccess={value => {
     setView('overview'); setSelectedAccount(null); setSelectedDay(null);
     setExpandedBill(null); setWeek(1); setMonth(today().slice(0,7));
-    setSession(value); setData(null); setReportPreset(null); setError(''); setNotice('');
+    setSession(value); setData(null); setReportPreset(null); setCardJump(null); setError(''); setNotice('');
   }}/>;
 
   return <div className="app-shell">
