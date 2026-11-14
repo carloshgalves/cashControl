@@ -41,11 +41,10 @@ export function CardScreen({onUnauthorized,accounts,onPaid,focusCardId,focusCycl
   const c=new AbortController();setBusy(true);setError('');
   request<{cards:Card[]}>('/api/cards',{signal:c.signal}).then(x=>{
    if(c.signal.aborted)return;
-   setCards(x.cards);setSelected(s=>x.cards.some(card=>card.cardId===focusCardId)?focusCardId!:
-     x.cards.some(card=>card.cardId===s)?s:x.cards[0]?.cardId??null);
+   setCards(x.cards);setSelected(s=>x.cards.some(card=>card.cardId===s)?s:x.cards[0]?.cardId??null);
   }).catch(e=>{if(!c.signal.aborted)fail(e);}).finally(()=>{if(!c.signal.aborted)setBusy(false);});
   return ()=>c.abort();
- },[refresh,onUnauthorized,focusCardId]);
+ },[refresh,onUnauthorized]);
  useEffect(()=>{
   const c=new AbortController();setDetail(null);setInvoices([]);setPurchases([]);
   if(!selected)return;
@@ -58,6 +57,7 @@ export function CardScreen({onUnauthorized,accounts,onPaid,focusCardId,focusCycl
  },[selected,refresh,onUnauthorized]);
  useEffect(()=>{
   if(!focusCardId||!focusCycle||!cards.some(c=>c.cardId===focusCardId))return;
+  setSelected(focusCardId);
   const controller=new AbortController();
   request<Detail>('/api/cards/'+focusCardId+'/invoices/'+focusCycle,{signal:controller.signal})
    .then(result=>{
