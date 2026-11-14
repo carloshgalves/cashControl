@@ -350,3 +350,36 @@ test('D2 merged alert rail retains ordinary payable identity and stable paginati
  assert.equal(second.alerts[0].cardId,f.card.cardId);
  assert.equal(new Set([...first.alerts,...second.alerts].map(x=>x.obligationId)).size,2);
 }));
+
+
+test('D2 identical concurrent retry keys settle at most once with same payment ID',()=>withDb(async db=>{
+ const f=await setup(db);
+ const payment=input(f,'simultaneous-same-key','750.00');
+ const responses=await Promise.all([
+  payInvoice(db,actor('alice'),payment,clock),
+  payInvoice(db,actor('alice'),payment,clock),
+  payInvoice(db,actor('alice'),payment,clock),
+ ]);
+ assert.equal(new Set(responses.map(p=>p.paymentId)).size,1);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM posted_cash_movements').get().n,1);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM card_invoice_payments').get().n,1);
+ assert.equal((await getInvoice(db,actor('alice'),f.card.cardId,'2026-11')).invoice.outstandingCents,75000);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,75000);
+}));
+
+test('D2 injected failure after movement INSERT rolls back debit and allows safe retry',()=>withDb(async db=>{
+ const f=await setup(db);
+ const payment=input(f,'injected-failure','500.00');
+ db.raw.exec('CREATE TRIGGER d2_injected_failure BEFORE INSERT ON card_invoice_payments BEGIN SELECT RAISE(ABORT,\'D2_INJECTED_FAILURE\'); END');
+ await assert.rejects(()=>payInvoice(db,actor('alice'),payment,clock),/D2_INJECTED_FAILURE/);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM posted_cash_movements').get().n,0,
+  'failed payment link must not leave orphan debit');
+ assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM card_invoice_payments').get().n,0);
+ assert.equal((await getAccount(db,actor('alice'),f.account.accountId)).balanceCents,200000);
+ assert.equal((await getInvoice(db,actor('alice'),f.card.cardId,'2026-11')).invoice.outstandingCents,150000);
+ db.raw.exec('DROP TRIGGER d2_injected_failure');
+ const committed=await payInvoice(db,actor('alice'),payment,clock);
+ assert.equal(committed.amountCents,50000);
+ assert.equal((await getAccount(db,actor('alice'),f.account.accountId)).balanceCents,150000);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM posted_cash_movements').get().n,1);
+}));
