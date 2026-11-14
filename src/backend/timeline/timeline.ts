@@ -229,7 +229,7 @@ export async function listDueAlerts(db: FinancialDatabase, actor: AuthenticatedA
     ' CASE WHEN due_on < ? THEN due_on END DESC, obligation_id ASC',
     'LIMIT ? OFFSET ?',
   ].join(' ')).bind(who,options.asOf,who,options.asOf,
-    options.asOf,options.asOf,options.asOf,options.asOf,
+    options.asOf,options.asOf,options.asOf,
     limit+1,offset).all<AlertRow>();
   const alerts = rows.results.slice(0, limit).map((row): DueAlert => {
     assertCents(row.outstanding_cents);
