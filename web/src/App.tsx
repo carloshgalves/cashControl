@@ -297,6 +297,7 @@ export function App() {
   const [expandedBill, setExpandedBill] = useState<string | null>(null);
   const [modal, setModal] = useState<{mode: EntryMode; bill?: Obligation} | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [cardJump,setCardJump]=useState<{cardId:string;cycle:string}|null>(null);
   const [reportPreset, setReportPreset] = useState<TrailFilter | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [notice, setNotice] = useState('');
@@ -367,7 +368,10 @@ export function App() {
     setNotice('Registro confirmado e atualizado.');
     setRefreshKey(x=>x+1);
   }
-  function moveTo(next: View) { setView(next); setNotice(''); }
+  function moveTo(next: View) { setCardJump(null);setView(next); setNotice(''); }
+  function openCardAlert(cardId:string,cycle:string){
+    setCardJump({cardId,cycle});setNotice('');setView('cards');
+  }
 
   if (session === undefined) return <div className="auth-page"><div className="loading-mark" role="status">Verificando sessão segura…</div></div>;
   if (!session) return <Login onSuccess={value => {
@@ -427,10 +431,13 @@ export function App() {
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {data && !loading && !error && <>
-        {view==='cards' && <CardScreen accounts={accounts} onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}} onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
-        {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
+        {view==='cards' && <CardScreen accounts={accounts} focusCardId={cardJump?.cardId} focusCycle={cardJump?.cycle}
+          onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}}
+          onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
+        {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')} onOpenCard={openCardAlert}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
-          onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onExport={status=>setReportPreset(status)}/>}
+          onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onOpenCard={openCardAlert}
+          onExport={status=>setReportPreset(status)}/>}
         {view==='overview' && <div className="grid-main">
           <div className="main-column">
             <section className="balance-panel" aria-labelledby="balance-title">

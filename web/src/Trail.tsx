@@ -49,7 +49,9 @@ function EventDetails({ event, asOf, onPay, onCards, obligation }: {
     {event.kind === 'obligation' && !obligation && !event.id.startsWith('card-invoice:') && <p className="trail-hint">Este compromisso não possui valor pendente para pagamento.</p>}
   </article>;
 }
-export function AlertPreview({ onExplore, refreshKey }: { onExplore: () => void; refreshKey: number }) {
+export function AlertPreview({ onExplore, onOpenCard, refreshKey }: {
+  onExplore: () => void; onOpenCard: (cardId:string,cycle:string)=>void; refreshKey: number;
+}) {
   const [alerts, setAlerts] = useState<DueAlert[]>([]);
   const [failure, setFailure] = useState(false);
   useEffect(() => {
@@ -70,7 +72,8 @@ export function AlertPreview({ onExplore, refreshKey }: { onExplore: () => void;
       <strong>Vencimentos no radar</strong>
       <small>São avisos no aplicativo. Nenhum valor foi debitado automaticamente.</small></div>
     <div className="trail-preview-items">{first.map(alert => <button type="button"
-      key={alert.obligationId} onClick={onExplore}>
+      key={alert.obligationId} onClick={()=>alert.cardId&&alert.cycle?
+        onOpenCard(alert.cardId,alert.cycle):onExplore()}>
       <span className="trail-alert-level">{alertBand(alert)}</span>
       <span><strong>{alert.title}</strong><small>{alertText(alert)}</small></span>
       <b>{money(alert.outstandingCents)}</b>
@@ -80,8 +83,9 @@ export function AlertPreview({ onExplore, refreshKey }: { onExplore: () => void;
   </section>;
 }
 
-export function TimelineScreen({ month, obligations, onPay, onCards, onExport, refreshKey }: {
+export function TimelineScreen({ month, obligations, onPay, onCards, onOpenCard, onExport, refreshKey }: {
   month: string; obligations: Obligation[]; onPay: (bill: Obligation) => void; onCards:()=>void;
+  onOpenCard:(cardId:string,cycle:string)=>void;
   onExport: (status: TrailFilter) => void; refreshKey: number;
 }) {
   const asOf = today();
@@ -180,6 +184,9 @@ export function TimelineScreen({ month, obligations, onPay, onCards, onExport, r
     finally { setAlertLoading(false); }
   }
   function selectAlert(alert: DueAlert) {
+    // Card invoices carry their explicit card/cycle target, never masquerade
+    // as ordinary payable obligations in the selection state.
+    if(alert.cardId&&alert.cycle){onOpenCard(alert.cardId,alert.cycle);return;}
     // Never discard the pin simply because this month's due event has not
     // reached the first server page (or lies in another month).
     setPinnedAlert(alert);
