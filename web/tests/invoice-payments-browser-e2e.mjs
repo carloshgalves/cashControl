@@ -94,6 +94,22 @@ async function main(){
   assert.equal((await invoice(page,card.cardId)).outstandingCents,150000);
   let dashboard=(await (await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).json()).dashboard;
   assert.equal(dashboard.cashFlow.expensesCents,0,'purchase is not bank outflow');
+  // Advance only the disposable browser clock to the invoice D-10 window.
+  await page.clock.setFixedTime(new Date('2026-11-25T13:00:00.000Z'));
+  const warningResponse=await page.request.get(APP+'/api/alerts?asOf=2026-11-25');
+  assert.equal(warningResponse.status(),200);
+  const found=(await warningResponse.json()).alerts.find(a=>a.cardId===card.cardId);
+  assert(found,'the private invoice must appear in due-alert feed');
+  assert.equal(found.cycle,'2026-11');
+  await page.getByRole('button',{name:'Panorama'}).first().click();
+  const preview=page.getByRole('region',{name:'Avisos de vencimento'});
+  await preview.getByRole('button',{name:/Fatura: Cartão de pagamento/}).click();
+  await page.getByRole('heading',{name:'Seu crédito sem confusões.'}).waitFor();
+  const highlighted=page.getByRole('region',{name:'Pagamentos da fatura'});
+  await highlighted.getByText('Histórico de pagamentos').waitFor();
+  await highlighted.getByText('R$ 1.500,00').first().waitFor();
+  await page.clock.setFixedTime(new Date('2026-11-11T13:00:00.000Z'));
+  console.log('D2_ALERT_UI_PASS: D-10 card alert opens the exact invoice in Chromium');
   await settle(page,card.cardId,'900,00');
   let inv=await invoice(page,card.cardId);
   assert.deepEqual([inv.totalCents,inv.paidCents,inv.outstandingCents,inv.state],
