@@ -13,8 +13,9 @@ type Invoice={cardId:string;cycle:string;dueOn:string;totalCents:number;paidCent
 type Detail={installments:Installment[];invoice?:Invoice;purchase?:Purchase};
 type FormKind='card'|'purchase'|null;
 
-export function CardScreen({onUnauthorized,accounts,onPaid,focusCardId,focusCycle}:{
+export function CardScreen({onUnauthorized,accounts,onPaid,focusCardId,focusCycle,onFocusConsumed}:{
  onUnauthorized:()=>void;accounts:Account[];onPaid:()=>void;focusCardId?:string;focusCycle?:string;
+ onFocusConsumed:()=>void;
 }){
  const [cards,setCards]=useState<Card[]>([]),[selected,setSelected]=useState<string|null>(null);
  const [invoices,setInvoices]=useState<Invoice[]>([]),[purchases,setPurchases]=useState<Purchase[]>([]);
@@ -59,13 +60,18 @@ export function CardScreen({onUnauthorized,accounts,onPaid,focusCardId,focusCycl
   if(!focusCardId||!focusCycle||!cards.some(c=>c.cardId===focusCardId))return;
   const controller=new AbortController();
   request<Detail>('/api/cards/'+focusCardId+'/invoices/'+focusCycle,{signal:controller.signal})
-   .then(result=>{if(!controller.signal.aborted)setDetail(result);})
+   .then(result=>{
+    if(controller.signal.aborted)return;
+    setDetail(result);
+    // Consume the one-shot alert target; manual card selection stays manual.
+    onFocusConsumed();
+   })
    .catch(cause=>{if(controller.signal.aborted)return;
     if(cause instanceof ApiError&&cause.status===401)onUnauthorized();
     else setError('A fatura do aviso não está mais disponível. Atualize os cartões.');
    });
   return ()=>controller.abort();
- },[focusCardId,focusCycle,cards,onUnauthorized]);
+ },[focusCardId,focusCycle,cards,onUnauthorized,onFocusConsumed]);
  async function save(event:FormEvent){
   event.preventDefault();if(busy||!form)return;
   setBusy(true);setError('');setNotice('');

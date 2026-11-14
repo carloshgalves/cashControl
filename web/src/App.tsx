@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, allPages, getSession, login, logout, request, snapshot } from './api.ts';
 import { AlertPreview, TimelineScreen } from './Trail.tsx';
@@ -298,6 +298,12 @@ export function App() {
   const [modal, setModal] = useState<{mode: EntryMode; bill?: Obligation} | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [cardJump,setCardJump]=useState<{cardId:string;cycle:string}|null>(null);
+  // Stable callbacks prevent card effects from refetching every time the
+  // parent renders and stop a consumed alert target from reselecting a card.
+  const invalidateSession=useCallback(()=>{
+    setSession(null);setData(null);setView('overview');setCardJump(null);
+  },[]);
+  const clearCardJump=useCallback(()=>setCardJump(null),[]);
   const [reportPreset, setReportPreset] = useState<TrailFilter | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [notice, setNotice] = useState('');
@@ -432,8 +438,9 @@ export function App() {
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {data && !loading && !error && <>
         {view==='cards' && <CardScreen accounts={accounts} focusCardId={cardJump?.cardId} focusCycle={cardJump?.cycle}
+          onFocusConsumed={clearCardJump}
           onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}}
-          onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
+          onUnauthorized={invalidateSession}/>}
         {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')} onOpenCard={openCardAlert}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
           onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onOpenCard={openCardAlert}
