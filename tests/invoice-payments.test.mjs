@@ -9,7 +9,7 @@ import { payInvoice,listInvoicePayments,CreditInvoiceInsufficient,
  CreditInvoiceUnavailable } from '../src/backend/cards/invoice-payments.ts';
 import { getDashboard } from '../src/backend/dashboard/dashboard.ts';
 import { listMovements } from '../src/backend/movements/movements.ts';
-import { listTimeline } from '../src/backend/timeline/timeline.ts';
+import { listTimeline, listDueAlerts } from '../src/backend/timeline/timeline.ts';
 import { makeReport } from '../src/backend/reports/report.ts';
 import { handleFinancialHttp } from '../src/backend/http/accounts-handler.ts';
 import { parseCents } from '../src/domain/money.ts';
@@ -306,4 +306,47 @@ test('D2 consolidation: two card purchases one invoice, distinct ordinary payabl
  assert.deepEqual([bob.cardInvoices.outstandingCents,bob.obligations.outstandingCents],[0,0]);
  assert.deepEqual((await listTimeline(db,actor('bob'),{...dec,asOf,limit:100})).events,[]);
  assert.equal((await makeReport(db,actor('bob'),{...dec,asOf,format:'pdf',status:'all'})).rows,0);
+}));
+
+
+test('D2 card due alerts: D-10, D-5, overdue, partial balance, suppression and owner isolation',()=>withDb(async db=>{
+ const f=await setup(db);
+ assert.deepEqual((await listDueAlerts(db,actor('alice'),{asOf:'2026-11-24'})).alerts,[]);
+ const current=(await listDueAlerts(db,actor('alice'),{asOf:'2026-11-25'})).alerts;
+ assert.equal(current.length,1);
+ const alert=current[0];
+ assert.equal(alert.obligationId,'card-invoice:'+f.card.cardId+':2026-11');
+ assert.equal(alert.cardId,f.card.cardId);
+ assert.equal(alert.cycle,'2026-11');
+ assert.equal(alert.title,'Fatura: Crédito alice (2026-11)');
+ assert.equal(alert.outstandingCents,150000);
+ assert.deepEqual([alert.daysUntil,alert.level],[10,'D-10']);
+ const near=(await listDueAlerts(db,actor('alice'),{asOf:'2026-11-30'})).alerts[0];
+ assert.deepEqual([near.daysUntil,near.level],[5,'D-5']);
+ const late=(await listDueAlerts(db,actor('alice'),{asOf:'2026-12-06'})).alerts[0];
+ assert.deepEqual([late.daysUntil,late.level],[-1,'overdue']);
+ await payInvoice(db,actor('alice'),input(f,'alert-partial','900.00'),clock);
+ const partial=(await listDueAlerts(db,actor('alice'),{asOf:'2026-11-25'})).alerts;
+ assert.equal(partial.length,1);
+ assert.equal(partial[0].outstandingCents,60000);
+ assert.deepEqual((await listDueAlerts(db,actor('bob'),{asOf:'2026-11-25'})).alerts,[]);
+ await payInvoice(db,actor('alice'),input(f,'alert-final','600.00'),clock);
+ assert.deepEqual((await listDueAlerts(db,actor('alice'),{asOf:'2026-11-25'})).alerts,[]);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,150000);
+}));
+
+test('D2 merged alert rail retains ordinary payable identity and stable pagination',()=>withDb(async db=>{
+ const f=await setup(db);
+ await createObligation(db,actor('alice'),{
+  idempotencyKey:key('alert-ordinary'),title:'Conta comum',totalCents:8000,dueOn:'2026-11-29',
+ },clock);
+ const first=await listDueAlerts(db,actor('alice'),{asOf:'2026-11-25',limit:1});
+ const second=await listDueAlerts(db,actor('alice'),{asOf:'2026-11-25',limit:1,offset:1});
+ assert.equal(first.hasMore,true);
+ assert.equal(second.hasMore,false);
+ assert.deepEqual([first.alerts[0].title,second.alerts[0].title],
+  ['Conta comum','Fatura: Crédito alice (2026-11)']);
+ assert.equal(first.alerts[0].cardId,undefined);
+ assert.equal(second.alerts[0].cardId,f.card.cardId);
+ assert.equal(new Set([...first.alerts,...second.alerts].map(x=>x.obligationId)).size,2);
 }));
