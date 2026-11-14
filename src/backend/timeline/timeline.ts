@@ -29,12 +29,16 @@ export interface TimelinePage {
 }
 export type AlertLevel = 'D-10' | 'D-5' | 'overdue';
 export interface DueAlert {
+  // Existing ordinary bills keep obligationId; credit invoices use a synthetic
+  // "card-invoice:" key and explicit cardId/cycle to route the user safely.
   obligationId: string;
   title: string;
   dueOn: string;
   outstandingCents: number;
   daysUntil: number;
   level: AlertLevel;
+  cardId?: string;
+  cycle?: string;
 }
 export interface AlertPage {
   alerts: DueAlert[];
@@ -50,7 +54,7 @@ interface EventRow {
 }
 interface AlertRow {
   obligation_id: string; title: string; due_on: string;
-  outstanding_cents: number;
+  outstanding_cents: number; card_id: string | null; invoice_cycle: string | null;
 }
 const DATE = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/;
 const statuses = new Set<string>(['all', 'realized', 'pending', 'overdue', 'planned', 'canceled']);
@@ -202,26 +206,40 @@ export async function listDueAlerts(db: FinancialDatabase, actor: AuthenticatedA
   const limit = options.limit ?? 20, offset = options.offset ?? 0;
   page(limit, offset);
   const rows = await db.prepare([
-    'SELECT obligation_id, title, due_on, outstanding_cents',
-    'FROM financial_obligation_balances',
-    'WHERE owner_user_id = ? AND cancellation_id IS NULL',
-    ' AND outstanding_cents > 0',
+    // Union obligations and unsettled card invoices without a join fan-out.
+    // All subjects are filtered by the verified owner before pagination.
+    'WITH due_items AS (',
+    " SELECT 'obligation:' || obligation_id AS obligation_id,",
+    ' title, due_on, outstanding_cents, NULL AS card_id, NULL AS invoice_cycle',
+    ' FROM financial_obligation_balances',
+    ' WHERE owner_user_id = ? AND cancellation_id IS NULL AND outstanding_cents > 0',
     " AND due_on <= date(?, '+10 days')",
-    // Show upcoming due dates first, then the *most recent* overdue items.
-    // Sorting overdue ASC surfaced stale historical bills before urgent ones.
+    ' UNION ALL',
+    " SELECT 'card-invoice:' || v.card_id || ':' || v.invoice_cycle,",
+    " 'Fatura: ' || c.display_name || ' (' || v.invoice_cycle || ')',",
+    ' v.due_on, v.outstanding_cents, v.card_id, v.invoice_cycle',
+    ' FROM credit_invoice_balances v',
+    ' JOIN credit_cards c ON c.owner_user_id=v.owner_user_id AND c.card_id=v.card_id',
+    ' WHERE v.owner_user_id = ? AND v.outstanding_cents > 0',
+    " AND v.due_on <= date(?, '+10 days')",
+    ')',
+    'SELECT obligation_id,title,due_on,outstanding_cents,card_id,invoice_cycle FROM due_items',
     'ORDER BY CASE WHEN due_on < ? THEN 1 ELSE 0 END ASC,',
     ' CASE WHEN due_on >= ? THEN due_on END ASC,',
     ' CASE WHEN due_on < ? THEN due_on END DESC, obligation_id ASC',
     'LIMIT ? OFFSET ?',
-  ].join(' ')).bind(who, options.asOf, options.asOf, options.asOf, options.asOf,
-    limit + 1, offset).all<AlertRow>();
+  ].join(' ')).bind(who,options.asOf,who,options.asOf,
+    options.asOf,options.asOf,options.asOf,options.asOf,
+    limit+1,offset).all<AlertRow>();
   const alerts = rows.results.slice(0, limit).map((row): DueAlert => {
     assertCents(row.outstanding_cents);
     const daysUntil = daysBetween(options.asOf, row.due_on);
     return {
-      obligationId: row.obligation_id, title: row.title,
+      obligationId: row.card_id ? row.obligation_id : row.obligation_id.slice('obligation:'.length),
+      title: row.title,
       dueOn: row.due_on, outstandingCents: row.outstanding_cents,
       daysUntil, level: daysUntil < 0 ? 'overdue' : daysUntil <= 5 ? 'D-5' : 'D-10',
+      ...(row.card_id && row.invoice_cycle ? {cardId:row.card_id,cycle:row.invoice_cycle} : {}),
     };
   });
   return { alerts, hasMore: rows.results.length > limit, limit, offset, asOf: options.asOf };
