@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { ApiError, allPages, getSession, login, logout, request, snapshot } from './api.ts';
 import { AlertPreview, TimelineScreen } from './Trail.tsx';
@@ -297,6 +297,13 @@ export function App() {
   const [expandedBill, setExpandedBill] = useState<string | null>(null);
   const [modal, setModal] = useState<{mode: EntryMode; bill?: Obligation} | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [cardJump,setCardJump]=useState<{cardId:string;cycle:string}|null>(null);
+  // Stable callbacks prevent card effects from refetching every time the
+  // parent renders and stop a consumed alert target from reselecting a card.
+  const invalidateSession=useCallback(()=>{
+    setSession(null);setData(null);setView('overview');setCardJump(null);
+  },[]);
+  const clearCardJump=useCallback(()=>setCardJump(null),[]);
   const [reportPreset, setReportPreset] = useState<TrailFilter | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [notice, setNotice] = useState('');
@@ -353,7 +360,7 @@ export function App() {
       // Never retain the previous user's navigation, selected account/day or
       // financial context when a different session signs in on this tab.
       setView('overview'); setMonth(today().slice(0,7)); setWeek(1);
-      setSelectedAccount(null); setSelectedDay(null); setExpandedBill(null); setNotice('');
+      setSelectedAccount(null); setSelectedDay(null); setExpandedBill(null); setCardJump(null); setNotice('');
     }
     catch (cause) { setNotice(readableError(cause)); }
     finally { setSigningOut(false); }
@@ -367,13 +374,16 @@ export function App() {
     setNotice('Registro confirmado e atualizado.');
     setRefreshKey(x=>x+1);
   }
-  function moveTo(next: View) { setView(next); setNotice(''); }
+  function moveTo(next: View) { setCardJump(null);setView(next); setNotice(''); }
+  function openCardAlert(cardId:string,cycle:string){
+    setCardJump({cardId,cycle});setNotice('');setView('cards');
+  }
 
   if (session === undefined) return <div className="auth-page"><div className="loading-mark" role="status">Verificando sessão segura…</div></div>;
   if (!session) return <Login onSuccess={value => {
     setView('overview'); setSelectedAccount(null); setSelectedDay(null);
     setExpandedBill(null); setWeek(1); setMonth(today().slice(0,7));
-    setSession(value); setData(null); setReportPreset(null); setError(''); setNotice('');
+    setSession(value); setData(null); setReportPreset(null); setCardJump(null); setError(''); setNotice('');
   }}/>;
 
   return <div className="app-shell">
@@ -427,10 +437,14 @@ export function App() {
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {data && !loading && !error && <>
-        {view==='cards' && <CardScreen onUnauthorized={()=>{setSession(null);setData(null);setView('overview');}}/>}
-        {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')}/>}
+        {view==='cards' && <CardScreen accounts={accounts} focusCardId={cardJump?.cardId} focusCycle={cardJump?.cycle}
+          onFocusConsumed={clearCardJump}
+          onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}}
+          onUnauthorized={invalidateSession}/>}
+        {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')} onOpenCard={openCardAlert}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
-          onPay={bill=>setModal({mode:'pay',bill})} onExport={status=>setReportPreset(status)}/>}
+          onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onOpenCard={openCardAlert}
+          onExport={status=>setReportPreset(status)}/>}
         {view==='overview' && <div className="grid-main">
           <div className="main-column">
             <section className="balance-panel" aria-labelledby="balance-title">
@@ -482,7 +496,7 @@ export function App() {
           </div>
           <div className="right-column">
             <section className="horizon">
-              <div className="section-head"><h2>O que vem pela frente</h2><span className="count">{allPending.length} pendente(s)</span></div>
+              <div className="section-head"><h2>O que vem pela frente</h2><span className="count">{allPending.length} conta(s) pendente(s)</span></div>
               <div className="date-rail">{Array.from({length:7},(_,i)=>Math.min(calendarDays,(monthlyBills[0] ? Number(monthlyBills[0].dueOn.slice(8)) : 1)+i))
                 .filter((date,i,all)=>all.indexOf(date)===i).map(day=>{
                   const date=month+'-'+String(day).padStart(2,'0');
@@ -508,7 +522,12 @@ export function App() {
               </div>) : <div className="empty-state">Nenhum vencimento pendente neste mês.</div>}
               <div className="horizon-total"><span>Total pendente · todos os meses</span>
                 <strong>{money(data.dashboard.obligations.outstandingCents)}</strong></div>
-              <button className="text-btn" onClick={()=>moveTo('calendar')}>Abrir agenda completa →</button>
+              {data.dashboard.cardInvoices.openCount>0&&<div className="horizon-total">
+                <span>Faturas de cartão em aberto · {data.dashboard.cardInvoices.openCount} ciclo(s)</span>
+                <strong>{money(data.dashboard.cardInvoices.outstandingCents)}</strong>
+              </div>}
+              {data.dashboard.cardInvoices.openCount>0&&<button className="text-btn" onClick={()=>moveTo('cards')}>Ver faturas e pagamentos →</button>}
+              <button className="text-btn" onClick={()=>moveTo('calendar')}>Abrir agenda de contas comuns →</button>
             </section>
             <div className="finance-note"><Icon>ⓘ</Icon><span>O saldo é atual. As obrigações em aberto e as movimentações do mês são indicadores distintos.</span></div>
           </div>

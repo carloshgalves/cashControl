@@ -16,6 +16,7 @@ export interface TrailPage {
 export interface DueAlert {
   obligationId: string; title: string; dueOn: string;
   outstandingCents: number; daysUntil: number; level: 'D-10' | 'D-5' | 'overdue';
+  cardId?: string; cycle?: string;
 }
 export interface DueAlertPage {
   alerts: DueAlert[]; hasMore: boolean; limit: number; offset: number; asOf: string;

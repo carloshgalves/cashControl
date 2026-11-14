@@ -2,7 +2,13 @@ import type { Movement, Transfer, Account, Obligation } from './api.ts';
 
 export const money = (cents: number): string => {
   if (!Number.isSafeInteger(cents)) throw new RangeError('Valor monetário inválido');
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cents / 100);
+  // The original Number(cents / 100) rounded some valid aggregate totals by
+  // one cent. BigInt retains every centavo, including near MAX_SAFE_INTEGER.
+  const negative = cents < 0 ? '-' : '';
+  const absolute = BigInt(cents < 0 ? -cents : cents);
+  const whole = (absolute / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const fraction = (absolute % 100n).toString().padStart(2, '0');
+  return negative + 'R$\u00a0' + whole + ',' + fraction;
 };
 export function parseAmount(value: string): string | null {
   const raw = value.trim().replace(/^R\$\s*/, '').replace(/\s/g, '');

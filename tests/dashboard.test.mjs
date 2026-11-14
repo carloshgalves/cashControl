@@ -25,7 +25,7 @@ class Database {
     for(const name of [
       '0001_financial_accounts.sql','0002_better_auth.sql',
       '0003_cash_movements.sql','0004_financial_obligations.sql',
-      '0005_internal_transfers.sql','0006_cancellations_refunds.sql',
+      '0005_internal_transfers.sql','0006_cancellations_refunds.sql', '0007_credit_cards_installments.sql', '0008_card_invoice_payments.sql',
     ]) this.raw.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
     this.queue=Promise.resolve();
   }

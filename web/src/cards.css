@@ -32,3 +32,9 @@
 @media(max-width:900px){.credit-lists{grid-template-columns:1fr}}
 @media(max-width:760px){.credit-title>.primary-btn{width:100%}.credit-form{padding:17px}.mobile-nav{overflow-x:auto;justify-content:flex-start}.mobile-nav button{min-width:52px}}
 @media(max-width:380px){.credit-two{grid-template-columns:1fr}}
+
+.credit-payment-panel{display:grid;gap:12px;margin-top:8px;padding-top:14px;border-top:1px solid var(--line)}
+.credit-invoice-balances{display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between;background:#eef5eb;border-radius:12px;padding:14px}
+.credit-invoice-balances span{display:grid;gap:5px;font-size:12px}
+.credit-payment-badge{font-size:11px;border-radius:22px;padding:6px;background:#e5f4e7;color:var(--green)}
+.credit-form select{width:100%;min-width:0;padding:11px;border:1px solid #cbd8cd;background:white;border-radius:10px}

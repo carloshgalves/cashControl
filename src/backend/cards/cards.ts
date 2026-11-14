@@ -21,7 +21,8 @@ export interface InstallmentView {
  installmentNo:number;installments:number;cycle:string;dueOn:string;amountCents:number;
 }
 export interface InvoiceView {
- cardId:string;cycle:string;dueOn:string;totalCents:number;installmentCount:number;purchaseCount:number;
+ cardId:string;cycle:string;dueOn:string;totalCents:number;paidCents:number;outstandingCents:number;
+ state:'open'|'partially_paid'|'paid';installmentCount:number;purchaseCount:number;
 }
 interface CardRow {card_id:string;display_name:string;institution:string|null;limit_cents:number;closing_day:number;due_day:number;created_at:string;creation_key:string}
 interface PurchaseRow {purchase_id:string;card_id:string;title:string;merchant:string|null;category:string|null;purchased_on:string;total_cents:number;installments_count:number;created_at:string;creation_key:string}
@@ -29,7 +30,7 @@ interface InstallmentRow {
  purchase_id:string;card_id:string;title:string;merchant:string|null;installment_no:number;
  installments_count:number;invoice_cycle:string;due_on:string;amount_cents:number;
 }
-interface InvoiceRow {invoice_cycle:string;due_on:string;max_due:string;total_cents:number;installment_count:number;purchase_count:number}
+interface InvoiceRow {invoice_cycle:string;due_on:string;max_due:string;total_cents:number;paid_cents:number;outstanding_cents:number;installment_count:number;purchase_count:number}
 export interface NewCard {
  idempotencyKey:string;name:string;institution?:string|null;limitCents:number;
  closingDay:number;dueDay:number;
@@ -220,22 +221,23 @@ export async function createPurchase(db:FinancialDatabase,actor:AuthenticatedAct
  if(!p||!details)throw new Error('Credit purchase not persisted');
  return {purchase:p,installments:details};
 }
+function invoiceView(cardId:string,row:InvoiceRow):InvoiceView{
+ if(row.due_on!==row.max_due ||![row.total_cents,row.paid_cents,row.outstanding_cents,
+   row.installment_count,row.purchase_count].every(n=>Number.isSafeInteger(n)&&n>=0) ||
+   row.total_cents===0||row.paid_cents>row.total_cents||
+   row.outstanding_cents!==row.total_cents-row.paid_cents)throw new Error('Inconsistent invoice aggregate');
+ return {cardId,cycle:row.invoice_cycle,dueOn:row.due_on,totalCents:row.total_cents,
+  paidCents:row.paid_cents,outstandingCents:row.outstanding_cents,
+  state:row.outstanding_cents===0?'paid':row.paid_cents>0?'partially_paid':'open',
+  installmentCount:row.installment_count,purchaseCount:row.purchase_count};
+}
 export async function listInvoices(db:FinancialDatabase,actor:AuthenticatedActor,cardId:string,limit=50,offset=0):Promise<InvoiceView[]>{
  const who=actorId(actor);page(limit,offset);
  if(!await getCard(db,actor,cardId))throw new CreditCardUnavailable();
- const result=await db.prepare([
-  'SELECT invoice_cycle, MIN(due_on) AS due_on, MAX(due_on) AS max_due,',
-  'COUNT(*) AS installment_count,COUNT(DISTINCT purchase_id) AS purchase_count,',
-  'SUM(amount_cents) AS total_cents',
-  'FROM credit_installments WHERE owner_user_id=? AND card_id=?',
-  'GROUP BY invoice_cycle ORDER BY invoice_cycle DESC LIMIT ? OFFSET ?'
- ].join(' ')).bind(who,cardId,limit,offset).all<InvoiceRow>();
- return result.results.map(row=>{
-  if(row.due_on!==row.max_due || !Number.isSafeInteger(row.total_cents) ||
-   !Number.isSafeInteger(row.installment_count)||!Number.isSafeInteger(row.purchase_count))throw new Error('Inconsistent invoice aggregate');
-  return {cardId,cycle:row.invoice_cycle,dueOn:row.due_on,totalCents:row.total_cents,
-   installmentCount:row.installment_count,purchaseCount:row.purchase_count};
- });
+ const result=await db.prepare(
+  'SELECT * FROM credit_invoice_balances WHERE owner_user_id=? AND card_id=? ORDER BY invoice_cycle DESC LIMIT ? OFFSET ?'
+ ).bind(who,cardId,limit,offset).all<InvoiceRow>();
+ return result.results.map(row=>invoiceView(cardId,row));
 }
 export async function getInvoice(db:FinancialDatabase,actor:AuthenticatedActor,cardId:string,cycle:string):Promise<{invoice:InvoiceView;installments:InstallmentView[]}|null>{
  const who=actorId(actor);
@@ -258,7 +260,13 @@ export async function getInvoice(db:FinancialDatabase,actor:AuthenticatedActor,c
   if(!Number.isSafeInteger(total+row.amount_cents))throw new CreditResultTooLarge();
   total+=row.amount_cents;purchaseIds.add(row.purchase_id);
  }
- return {invoice:{cardId,cycle,dueOn,totalCents:total,
-  installmentCount:v.results.length,purchaseCount:purchaseIds.size},
-  installments:v.results.map(installmentView)};
+ const invoiceRow=await db.prepare(
+  'SELECT * FROM credit_invoice_balances WHERE owner_user_id=? AND card_id=? AND invoice_cycle=?'
+ ).bind(who,cardId,cycle).first<InvoiceRow>();
+ if(!invoiceRow)throw new Error('Invoice aggregate disappeared');
+ const invoice=invoiceView(cardId,invoiceRow);
+ if(invoice.totalCents!==total||invoice.dueOn!==dueOn||
+  invoice.purchaseCount!==purchaseIds.size||invoice.installmentCount!==v.results.length)
+  throw new Error('Invoice changed during read');
+ return {invoice,installments:v.results.map(installmentView)};
 }

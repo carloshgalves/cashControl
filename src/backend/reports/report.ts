@@ -62,7 +62,7 @@ export async function makeReport(
  if(!options||typeof options!=='object')throw new TypeError('Report options required');
  validateDate(options.from);validateDate(options.to);validateDate(options.asOf);
  if(options.from>options.to||!['pdf','xlsx'].includes(options.format))throw new TypeError('Invalid report filter');
- let scope='Todas as contas e obrigações';
+ let scope='Todas as contas e obrigações (incluindo faturas de cartão)';
  if(options.accountId){
   if(!/^[0-9a-f-]{36}$/.test(options.accountId))throw new TypeError('Invalid account identifier');
   const account=await getAccount(db,actor,options.accountId);
@@ -78,7 +78,7 @@ export async function makeReport(
      total.expensesCents!==d.cashFlow.expensesCents ||
      total.refundsCents!==d.cashFlow.refundsCents ||
      total.netCents!==d.cashFlow.netCents ||
-     total.outstandingCents!==d.obligations.dueInPeriodCents) {
+     total.outstandingCents!==d.obligations.dueInPeriodCents+d.cardInvoices.dueInPeriodCents) {
     // Race between read queries, or an invariant broken by future backend
     // changes. Do not produce a self-contradictory financial document.
     throw new ReportReconciliationError();
@@ -137,7 +137,7 @@ export async function makeReport(
    ['Saídas confirmadas, incluindo baixas',total.expensesCents],
    ['Reembolsos confirmados',total.refundsCents],
    ['Transferências entre contas (não compõem fluxo)',total.transfersCents],
-   ['Obrigações ainda pendentes no período (não debitadas)',total.outstandingCents],
+   ['Obrigações e faturas de cartão pendentes no período (não debitadas)',total.outstandingCents],
    ['Fluxo líquido efetivo (não é saldo patrimonial)',total.netCents],
   ] as const){
    sheet.push([t(label,1),t(''),t(''),t(''),t(''),xlsxMoneyCell(value)]);

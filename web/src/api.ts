@@ -29,6 +29,10 @@ export interface Dashboard {
     basis: 'current_outstanding'; openCount: number; outstandingCents: number;
     dueInPeriodCount: number; dueInPeriodCents: number;
   };
+  cardInvoices: {
+    basis:'current_outstanding';openCount:number;outstandingCents:number;
+    dueInPeriodCount:number;dueInPeriodCents:number;
+  };
   expectations: { status: 'not_implemented' };
 }
 export interface Session { user: { id: string; email: string; name?: string }; session: { id: string } }

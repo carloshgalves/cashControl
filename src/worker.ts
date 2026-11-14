@@ -134,6 +134,7 @@ for(const path of [
  '/api/cards','/api/cards/:cardId',
  '/api/cards/:cardId/purchases','/api/cards/:cardId/purchases/:purchaseId',
  '/api/cards/:cardId/invoices','/api/cards/:cardId/invoices/:cycle',
+ '/api/cards/:cardId/invoices/:cycle/payments',
 ]){
  app.all(path,(c)=>{
   const auth=createWorkerAuth(c.env);

@@ -58,7 +58,7 @@ Validação: `npm test`, `npm run ui:test`, `npm run ui:build`, `npm run ui:e2e`
 
 A geração de XLSX/PDF utiliza formatação exata para totais elevados: no Excel, montantes superiores ao limite seguro de precisão numérica são exportados como **texto monetário** para não perder centavos (e não devem ser somados automaticamente). O E2E usa data civil fixa e não depende do mês de execução. Consulte o relatório C3 para as regressões da terceira revisão adversarial.
 
-## Cartões de crédito e parcelas — D1 / SPEC-004 (PR de revisão)
+## Cartões de crédito e parcelas — D1 / SPEC-004 (PR #41 mesclada)
 
 Nova navegação **Cartões**, opcional, com cadastro de apelido, instituição, limite informado e dias de fechamento/vencimento. Compras com valor total em centavos e 1–60 parcelas geram ciclos mensais consultáveis por compra ou por fatura. Crédito não incrementa saldo; compra não cria saída bancária.
 
@@ -66,4 +66,18 @@ Nova navegação **Cartões**, opcional, com cadastro de apelido, instituição,
 
 API autenticada: `GET/POST /api/cards`, `GET /api/cards/{id}`, `GET/POST /api/cards/{id}/purchases`, `GET /api/cards/{id}/purchases/{purchaseId}`, `GET /api/cards/{id}/invoices`, `GET /api/cards/{id}/invoices/{AAAA-MM}`. IDs de outro titular retornam 404. Compra e parcelas são imutáveis e criadas em lote transacional, com chave de idempotência por titular.
 
-**Atenção ao recorte:** pagamentos de fatura (D2 / #20), conciliação (D3 / #21), alteração de dia, estornos, antecipação e integração de compromissos de cartão aos totais do dashboard/exportação ficam para contratos posteriores; a tela identifica essa separação para evitar valores enganosos. Consulte [relatório técnico de D1](docs/implementation/CREDIT-CARDS-D1-REVIEW.md). Sem deploy remoto nem dados reais na homologação.
+**Estado D1:** [PR #41](https://github.com/carloshgalves/cashControl/pull/41) mesclada. Pagamentos de fatura e integração ao dashboard/trilha/exportação estão em revisão na D2; conciliação com o emissor continua para D3 / #21. Consulte [relatório técnico de D1](docs/implementation/CREDIT-CARDS-D1-REVIEW.md). Sem deploy remoto nem dados reais na homologação.
+
+## Pagamentos integrais e parciais de faturas — D2 / SPEC-004 (Issue #20)
+
+**Implementado na branch de revisão `feat/d2-invoice-payments` (não mesclada).**
+
+- Faturas calculadas por cartão e ciclo com **total, pago e restante** derivados dos registros imutáveis. Ao pagar R$ 900,00 de R$ 1.500,00, restam R$ 600,00; o pagamento posterior de R$ 600,00 encerra o ciclo.
+- POST autenticado `/api/cards/{cardId}/invoices/{AAAA-MM}/payments` com `idempotencyKey`, `accountId`, `amount`, `method` e `paidOn`; GET na mesma rota consulta o histórico paginado. Apenas contas e faturas do usuário autenticado são aceitas.
+- Uma única saída de caixa `posted_cash_movements` é criada no **mesmo batch SQLite/D1** que o vínculo em `card_invoice_payments`. O banco impede overpay concorrente, vínculos duplos e reembolsos genéricos de pagamento de cartão sem regra de reversão. Compras continuam sem saída bancária.
+- Dashboard mostra **faturas de cartão pendentes separadas** das obrigações comuns; a trilha, alertas D-10/D-5 e relatórios PDF/XLSX incluem faturas não pagas **uma vez**, sem tratá-las como débito realizado. Pagamentos aparecem uma vez como baixa confirmada. Um aviso de cartão abre seu cartão e ciclo exatos.
+- Formulário React apresenta contas de origem, data, método, valor, histórico de pagamentos e alertas de saldo negativo. Não armazena PAN/CVV. O formatador de centavos utiliza `BigInt` para não arredondar totais elevados.
+
+**Testes locais/CI:** `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, `npm test`, `npm run ui:test` e `npm run d2:e2e` com D1 descartável e Chromium. Há regressões para duas identidades, 900+600, três tentativas idempotentes simultâneas, duas baixas concorrentes, rollback injetado após inserção bancária e avisos de cartão.
+
+**Limites:** D2 registra somente pagamentos já efetivados; não agenda transferências nem gera juros, estornos automáticos, renegociações ou conciliação bancária (D3 / #21). Reembolso de baixa de cartão requer um fluxo específico que preserve/reabra a dívida, portanto foi bloqueado no endpoint genérico. Não há implantação de produção. [Parecer técnico D2](docs/implementation/CREDIT-INVOICE-D2-REVIEW.md).
