@@ -6,7 +6,7 @@ import { createCard,createPurchase,getInvoice,listInvoices,CreditIdempotencyConf
  CreditCardUnavailable } from '../src/backend/cards/cards.ts';
 import { payInvoice } from '../src/backend/cards/invoice-payments.ts';
 import { createAccount } from '../src/backend/accounts/accounts.ts';
-import { recordInvoiceBankTotal,readInvoiceReconciliation } from '../src/backend/cards/reconciliation.ts';
+import { recordInvoiceBankTotal,readInvoiceReconciliation,parseReportedInvoiceCents } from '../src/backend/cards/reconciliation.ts';
 import { getDashboard } from '../src/backend/dashboard/dashboard.ts';
 import { makeReport } from '../src/backend/reports/report.ts';
 import { handleFinancialHttp } from '../src/backend/http/accounts-handler.ts';
@@ -254,4 +254,26 @@ test('D3 replay of an old matching observation returns the CURRENT latest unreso
  assert.equal(replay.latestObservation.observationId,
   (await readInvoiceReconciliation(db,actor('alice'),f.card.cardId,'2026-11')).reconciliation.latestObservation.observationId);
  assert.equal(db.raw.prepare('SELECT count(*) n FROM card_invoice_bank_observations').get().n,2);
+}));
+
+
+test('D3 aggregate totals from multiple legal purchases are not capped like a single cash movement',()=>using(async db=>{
+ const f=await seeded(db,'alice',9_000_000_000_000);
+ await createPurchase(db,actor('alice'),{
+  idempotencyKey:key('second-huge-purchase'),cardId:f.card.cardId,title:'Second large purchase',
+  purchasedOn:'2026-11-12',totalCents:9_000_000_000_000,installments:1,
+ },clock);
+ const expected=18_000_000_000_000;
+ assert.equal((await getInvoice(db,actor('alice'),f.card.cardId,'2026-11')).invoice.totalCents,expected);
+ assert.equal(parseReportedInvoiceCents('180000000000.00'),expected);
+ const saved=await recordInvoiceBankTotal(db,actor('alice'),input(f.card.cardId,'aggregate-safe',expected),clock);
+ assert.equal(saved.status,'matched');
+ assert.equal(saved.differenceCents,0);
+ assert.equal(saved.latestObservation.calculatedAtEntryCents,expected);
+ assert.equal((await (await http(db,'/api/cards/'+f.card.cardId+'/invoices/2026-11/reconciliation')).json())
+  .reconciliation.calculatedTotalCents,expected);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM posted_cash_movements').get().n,0);
+ for(const invalid of ['90071992547409.92','180000000000.001','9e12','-1','Infinity'])
+  assert.throws(()=>parseReportedInvoiceCents(invalid),RangeError);
+ assert.equal(parseReportedInvoiceCents('90071992547409.91'),Number.MAX_SAFE_INTEGER);
 }));

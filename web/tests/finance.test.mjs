@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parseAmount, money, monthBounds, shiftMonth, weekOf, weekRange,
+  parseAmount, parseBankInvoiceAmount, money, monthBounds, shiftMonth, weekOf, weekRange,
   groupWeeks, validateWeekReconciliation, dueOn, timeline, accountBalancePreview,
 } from '../src/finance.ts';
 const mk = (id, occurredOn, amountCents, direction, eventKind='ordinary')=>({
@@ -79,4 +79,19 @@ test('BRL presentation preserves all centavos of large invoice aggregates withou
  assert.equal(money(-9_000_000_000_000_001),'-R$\u00a090.000.000.000.000,01');
  assert.equal(money(Number.MAX_SAFE_INTEGER),'R$\u00a090.071.992.547.409,91');
  assert.throws(()=>money(Number.MAX_SAFE_INTEGER+1),RangeError);
+});
+
+
+test('manual bank invoice parsing preserves zero and large aggregate cents exactly',()=>{
+ assert.equal(parseBankInvoiceAmount('0'),'0.00');
+ assert.equal(parseBankInvoiceAmount('0,00'),'0.00');
+ assert.equal(parseBankInvoiceAmount('R$ 180.000.000.000,01'),'180000000000.01');
+ assert.equal(parseBankInvoiceAmount('90071992547409.91'),'90071992547409.91');
+ assert.equal(parseBankInvoiceAmount('90.071.992.547.409,91'),'90071992547409.91');
+ assert.equal(parseBankInvoiceAmount('90071992547409.92'),null);
+ assert.equal(parseBankInvoiceAmount('-1'),null);
+ assert.equal(parseBankInvoiceAmount('Infinity'),null);
+ assert.equal(parseBankInvoiceAmount('1e3'),null);
+ assert.equal(parseBankInvoiceAmount('0.001'),null);
+ assert.equal(parseBankInvoiceAmount('1,2,3'),null);
 });
