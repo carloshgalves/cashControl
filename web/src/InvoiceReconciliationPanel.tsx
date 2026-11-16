@@ -108,7 +108,7 @@ export function InvoiceReconciliationPanel({cardId,cycle,totalCents,onUnauthoriz
     <button className="outline-btn" type="button" disabled={busy} onClick={()=>setShowForm(false)}>Cancelar</button>
    </div>
   </form>}
-  {showHistory&&<div className="credit-reconcile-history" aria-label="Histórico de valores informados">
+  {showHistory&&<section className="credit-reconcile-history" aria-label="Histórico de valores informados">
    {history.map((h,i)=><div className="credit-installment" key={h.observationId}>
     <span><strong>{money(h.reportedTotalCents)}</strong>
      <small>Calculado no registro: {money(h.calculatedAtEntryCents)} · {new Date(h.createdAt).toLocaleString('pt-BR')} · Origem: informado manualmente</small></span>
@@ -116,7 +116,7 @@ export function InvoiceReconciliationPanel({cardId,cycle,totalCents,onUnauthoriz
    </div>)}
    {canLoadMore&&<button type="button" className="outline-btn" disabled={loading} onClick={()=>void more()}>
     {loading?'Carregando…':'Carregar mais informações'}</button>}
-  </div>}
+  </section>}
   {error&&<p className="form-error" role="alert">{error}</p>}
  </section>;
 }
