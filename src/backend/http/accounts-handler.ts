@@ -14,6 +14,7 @@ import { createCard, listCards, getCard, createPurchase, listPurchases, getPurch
  CreditResultTooLarge } from '../cards/cards.ts';
 import { payInvoice, listInvoicePayments, CreditInvoiceUnavailable,
  CreditInvoiceInsufficient } from '../cards/invoice-payments.ts';
+import { readInvoiceReconciliation,recordInvoiceBankTotal } from '../cards/reconciliation.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -268,6 +269,7 @@ export async function handleFinancialHttp(
       const invoiceList=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices$/);
       const invoiceDetail=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices\/(\d{4}-\d{2})$/);
       const paymentPath=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices\/(\d{4}-\d{2})\/payments$/);
+      const reconciliationPath=path.match(/^\/api\/cards\/([0-9a-f-]{36})\/invoices\/(\d{4}-\d{2})\/reconciliation$/);
       const page=(name:string,defaultValue:number)=>{
         const raw=requestURL.searchParams.get(name);
         if(raw===null)return defaultValue;
@@ -275,7 +277,7 @@ export async function handleFinancialHttp(
         return Number(raw);
       };
       const allowed=method==='GET'&&
-        (purchaseList!==null||invoiceList!==null||paymentPath!==null)?new Set(['limit','offset']):new Set<string>();
+        (purchaseList!==null||invoiceList!==null||paymentPath!==null||reconciliationPath!==null)?new Set(['limit','offset']):new Set<string>();
       let unknownQuery=false;
       requestURL.searchParams.forEach((_value,key)=>{
         if(!allowed.has(key)||requestURL.searchParams.getAll(key).length!==1)unknownQuery=true;
@@ -305,6 +307,31 @@ export async function handleFinancialHttp(
       if (method==='GET' && invoiceDetail){
         const data=await getInvoice(database,actor,invoiceDetail[1]!,invoiceDetail[2]!);
         return data?json(data):error(404,'NOT_FOUND');
+      }
+      if(method==='GET'&&reconciliationPath){
+        return json(await readInvoiceReconciliation(database,actor,reconciliationPath[1]!,reconciliationPath[2]!,
+          page('limit',25),page('offset',0)));
+      }
+      if(method==='POST'&&reconciliationPath){
+        if(!request.body)return error(400,'INVALID_BODY');
+        const bytes=await readBounded(request,4096);
+        if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+        let raw:unknown;
+        try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+        catch{return error(400,'INVALID_JSON');}
+        if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+        const p=raw as Record<string,unknown>;
+        if(Object.keys(p).some(k=>!['idempotencyKey','reportedTotal'].includes(k))||
+           typeof p.idempotencyKey!=='string'||typeof p.reportedTotal!=='string')
+          return error(400,'INVALID_BODY');
+        let reportedTotalCents;
+        try{reportedTotalCents=parseCents(p.reportedTotal);}
+        catch{return error(400,'INVALID_AMOUNT');}
+        const reconciliation=await recordInvoiceBankTotal(database,actor,{
+          idempotencyKey:p.idempotencyKey,
+          cardId:reconciliationPath[1]!,cycle:reconciliationPath[2]!,reportedTotalCents,
+        });
+        return json({reconciliation},201);
       }
       if (method==='GET'&&paymentPath){
         return json({payments:await listInvoicePayments(database,actor,paymentPath[1]!,paymentPath[2]!,
