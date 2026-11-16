@@ -45,7 +45,7 @@ function safeAggregate(cents:number,allowZero=true):void{
 export function parseReportedInvoiceCents(decimal:string):number{
  if(typeof decimal!=='string'||!/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/.test(decimal))
   throw new RangeError('Invalid invoice total decimal');
- const [whole,fraction='']=decimal.split('.');
+ const [whole='0',fraction='']=decimal.split('.');
  const cents=BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));
  if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw new RangeError('Invoice total exceeds safe integer range');
  return Number(cents);
