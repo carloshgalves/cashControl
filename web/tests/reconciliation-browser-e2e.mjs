@@ -84,6 +84,28 @@ async function main(){
   data=await (await page.request.get(endpoint)).json();
   assert.equal(data.observations.length,2);
   assert.deepEqual(data.observations.map(x=>x.reportedTotalCents),[10001,11001]);
+  // Fault injection: the POST commits, but the subsequent UI refresh GET
+  // fails. The user's retry must retain the same idempotency key.
+  await panel.getByRole('button',{name:'Registrar novo valor informado'}).click();
+  const retryForm=page.getByRole('form',{name:'Informar total da instituição'});
+  await retryForm.getByLabel('Total bruto da fatura informado pela instituição (R$)').fill('101,00');
+  let blocked=false;
+  const matcher='**/api/cards/**/invoices/**/reconciliation?limit=25&offset=0';
+  const interrupt=async route=>{
+   if(!blocked&&route.request().method()==='GET'){blocked=true;await route.abort('failed');}
+   else await route.continue();
+  };
+  await page.route(matcher,interrupt);
+  await retryForm.getByRole('button',{name:'Salvar valor informado'}).click();
+  await panel.getByRole('alert').waitFor();
+  assert.equal(blocked,true,'the post-commit refresh was deliberately interrupted');
+  await page.unroute(matcher,interrupt);
+  await retryForm.getByRole('button',{name:'Salvar valor informado'}).click();
+  await panel.getByText('Divergência pendente').waitFor();
+  data=await (await page.request.get(endpoint)).json();
+  assert.deepEqual(data.observations.map(x=>x.reportedTotalCents),[10100,10001,11001],
+   'post-commit retry may not create a fourth observation');
+  console.log('D3_RETRY_UI_PASS: failed refresh after committed POST, no duplicate manual observation');
   const final=(await (await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).json()).dashboard;
   assert.deepEqual(final,old,'reconciliation changes no ledger or obligations');
   assert.equal((await (await page.request.get(APP+'/api/movements')).json()).movements.length,0);
