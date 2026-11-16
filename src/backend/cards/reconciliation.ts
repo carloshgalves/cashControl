@@ -106,16 +106,13 @@ export async function recordInvoiceBankTotal(
  // Idempotent replays do not append observations or move them to "latest".
  const existing=await previous();
  if(existing){
-  const total=await invoiceTotal(db,actor,input.cardId,input.cycle);
-  return compare(input.cardId,input.cycle,total,{
-   observation_id:existing.observationId,card_id:existing.cardId,invoice_cycle:existing.cycle,
-   reported_total_cents:existing.reportedTotalCents,
-   calculated_total_at_entry_cents:existing.calculatedAtEntryCents,created_at:existing.createdAt,
-  });
+  // Replay proves the original operation already exists, while the read model
+  // must reflect any subsequent independently entered manual observations.
+  return (await readInvoiceReconciliation(db,actor,input.cardId,input.cycle,1)).reconciliation;
  }
  // An INSERT ... SELECT obtains a real authorized invoice aggregate as its
  // historical snapshot and is protected from concurrent invalidation by SQL.
- const total=await invoiceTotal(db,actor,input.cardId,input.cycle);
+ await invoiceTotal(db,actor,input.cardId,input.cycle);
  const id=crypto.randomUUID();
  const createdAt=clock().toISOString();
  try{
@@ -138,6 +135,5 @@ export async function recordInvoiceBankTotal(
  // The durable row must exist even if another user action creates a newer report.
  if(!latest.reconciliation.latestObservation)throw new Error('Bank observation did not persist');
  // Total is never used to update the invoice; retained solely for comparison.
- void total;
  return latest.reconciliation;
 }
