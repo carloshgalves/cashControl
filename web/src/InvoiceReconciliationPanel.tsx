@@ -1,7 +1,7 @@
 import { useEffect,useRef,useState } from 'react';
 import type { FormEvent } from 'react';
 import { ApiError,request } from './api.ts';
-import { money,parseAmount } from './finance.ts';
+import { money,parseBankInvoiceAmount } from './finance.ts';
 
 type Status='unreported'|'matched'|'pending_divergence';
 interface Observation {
@@ -44,8 +44,7 @@ export function InvoiceReconciliationPanel({cardId,cycle,totalCents,onUnauthoriz
  const canLoadMore=page?.hasMore??false;
  async function add(event:FormEvent){
   event.preventDefault();if(busy)return;
-  const val=value.trim();
-  const normalized=/^0(?:[,.]0{1,2})?$/.test(val)?'0.00':parseAmount(val);
+  const normalized=parseBankInvoiceAmount(value);
   if(!normalized){setError('Informe um valor não negativo válido, em reais e centavos.');return;}
   setBusy(true);setError('');
   try{

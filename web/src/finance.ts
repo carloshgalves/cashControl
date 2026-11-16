@@ -21,6 +21,25 @@ export function parseAmount(value: string): string | null {
   if (!Number.isSafeInteger(amount) || amount < 1 || amount > 9_000_000_000_000) return null;
   return (amount / 100).toFixed(2);
 }
+
+/** Manual issuer totals are comparison-only, potentially the sum of many
+ * individually valid purchases. Preserve up to MAX_SAFE_INTEGER centavos
+ * without changing monetary limits of ordinary cash mutations.
+ */
+export function parseBankInvoiceAmount(value:string):string|null{
+ const raw=value.trim().replace(/^R\$\s*/,'').replace(/\s/g,'');
+ let canonical:string;
+ if(/^[1-9]\d{0,2}(?:\.\d{3})+(?:,\d{1,2})?$/.test(raw))
+  canonical=raw.replace(/\./g,'').replace(',','.');
+ else if(/^(?:0|[1-9]\d{0,13})(?:[,.]\d{1,2})?$/.test(raw))
+  canonical=raw.replace(',','.');
+ else return null;
+ const [whole='',fraction='']=canonical.split('.');
+ const cents=BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));
+ if(cents>BigInt(Number.MAX_SAFE_INTEGER))return null;
+ return (cents/100n).toString()+'.'+(cents%100n).toString().padStart(2,'0');
+}
+
 export function monthBounds(month: string): { from: string; to: string } {
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(month)) throw new RangeError('Mês inválido');
   const [year, num] = month.split('-').map(Number);

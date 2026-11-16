@@ -1,4 +1,4 @@
-import { assertCents } from '../../domain/money.ts';
+// Aggregate invoices can exceed the per-entry MAX_CENTS without losing safe integer precision.
 import type { AuthenticatedActor, FinancialDatabase } from '../accounts/accounts.ts';
 import { getInvoice, CreditCardUnavailable, CreditIdempotencyConflict } from './cards.ts';
 import { CreditInvoiceUnavailable } from './invoice-payments.ts';
@@ -38,8 +38,20 @@ function validate(cardId:string,cycle:string):void{
     !/^[0-9]{4}-(?:0[1-9]|1[0-2])$/.test(cycle)||
     Number(cycle.slice(0,4))<1000)throw new TypeError('Invalid invoice key');
 }
+function safeAggregate(cents:number,allowZero=true):void{
+ if(!Number.isSafeInteger(cents)||cents<0||(!allowZero&&cents===0))
+  throw new RangeError('Invalid bank invoice total in cents');
+}
+export function parseReportedInvoiceCents(decimal:string):number{
+ if(typeof decimal!=='string'||!/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/.test(decimal))
+  throw new RangeError('Invalid invoice total decimal');
+ const [whole,fraction='']=decimal.split('.');
+ const cents=BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'));
+ if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw new RangeError('Invoice total exceeds safe integer range');
+ return Number(cents);
+}
 function view(row:Row):BankObservation{
- assertCents(row.reported_total_cents);assertCents(row.calculated_total_at_entry_cents);
+ safeAggregate(row.reported_total_cents);safeAggregate(row.calculated_total_at_entry_cents,false);
  if(row.calculated_total_at_entry_cents===0)throw new Error('Invalid historical comparison');
  return {
   observationId:row.observation_id,cardId:row.card_id,cycle:row.invoice_cycle,
@@ -92,7 +104,7 @@ export async function recordInvoiceBankTotal(
  validate(input.cardId,input.cycle);
  if(typeof input.idempotencyKey!=='string'||!KEY.test(input.idempotencyKey))
   throw new TypeError('Invalid observation key');
- assertCents(input.reportedTotalCents); // zero is a valid bank-reported total
+ safeAggregate(input.reportedTotalCents); // zero is a valid bank-reported total
  const previous=async():Promise<BankObservation|null>=>{
   const row=await db.prepare(
    'SELECT * FROM card_invoice_bank_observations WHERE owner_user_id=? AND creation_key=?'

@@ -14,7 +14,7 @@ import { createCard, listCards, getCard, createPurchase, listPurchases, getPurch
  CreditResultTooLarge } from '../cards/cards.ts';
 import { payInvoice, listInvoicePayments, CreditInvoiceUnavailable,
  CreditInvoiceInsufficient } from '../cards/invoice-payments.ts';
-import { readInvoiceReconciliation,recordInvoiceBankTotal } from '../cards/reconciliation.ts';
+import { readInvoiceReconciliation,recordInvoiceBankTotal,parseReportedInvoiceCents } from '../cards/reconciliation.ts';
 
 /** Session shape returned by the independently verified Better Auth server call. */
 export type VerifiedSession = {
@@ -325,7 +325,7 @@ export async function handleFinancialHttp(
            typeof p.idempotencyKey!=='string'||typeof p.reportedTotal!=='string')
           return error(400,'INVALID_BODY');
         let reportedTotalCents;
-        try{reportedTotalCents=parseCents(p.reportedTotal);}
+        try{reportedTotalCents=parseReportedInvoiceCents(p.reportedTotal);}
         catch{return error(400,'INVALID_AMOUNT');}
         const reconciliation=await recordInvoiceBankTotal(database,actor,{
           idempotencyKey:p.idempotencyKey,
