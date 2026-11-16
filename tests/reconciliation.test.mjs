@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createCard,createPurchase,getInvoice,listInvoices,CreditIdempotencyConflict,
  CreditCardUnavailable } from '../src/backend/cards/cards.ts';
 import { payInvoice } from '../src/backend/cards/invoice-payments.ts';
+import { createAccount } from '../src/backend/accounts/accounts.ts';
 import { recordInvoiceBankTotal,readInvoiceReconciliation } from '../src/backend/cards/reconciliation.ts';
 import { getDashboard } from '../src/backend/dashboard/dashboard.ts';
 import { makeReport } from '../src/backend/reports/report.ts';
@@ -218,4 +219,39 @@ test('D3 HTTP exact amounts, same-origin, owner isolation, pagination, retry and
  assert.equal(db.raw.prepare('SELECT count(*) n FROM card_invoice_bank_observations').get().n,1);
  assert.equal((await http(db,url,'bob','POST',{idempotencyKey:key('steal'),reportedTotal:'100'})).status,404);
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,0);
+}));
+
+
+test('D3 compares gross invoice total even after partial card payment, never to remaining debt',()=>using(async db=>{
+ const f=await seeded(db);
+ const account=await createAccount(db,actor('alice'),{
+  idempotencyKey:key('account-for-partial'),name:'Conta de origem',kind:'bank',
+  funding:{mode:'external',cents:200000},
+ },clock);
+ await recordInvoiceBankTotal(db,actor('alice'),input(f.card.cardId,'bank-exact-gross',150000),clock);
+ const paid=await payInvoice(db,actor('alice'),{
+  idempotencyKey:key('partial-payment'),cardId:f.card.cardId,cycle:'2026-11',
+  accountId:account.accountId,amountCents:50000,method:'pix',paidOn:'2026-11-11',
+ },clock);
+ assert.equal(paid.amountCents,50000);
+ const comparison=await readInvoiceReconciliation(db,actor('alice'),f.card.cardId,'2026-11');
+ assert.deepEqual([comparison.reconciliation.status,comparison.reconciliation.calculatedTotalCents,
+  comparison.reconciliation.reportedTotalCents,comparison.reconciliation.differenceCents],
+  ['matched',150000,150000,0]);
+ assert.equal((await getInvoice(db,actor('alice'),f.card.cardId,'2026-11')).invoice.outstandingCents,100000);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,50000);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM card_invoice_bank_observations').get().n,1);
+}));
+
+test('D3 replay of an old matching observation returns the CURRENT latest unresolved comparison',()=>using(async db=>{
+ const f=await seeded(db);
+ const original=input(f.card.cardId,'replay-old',150000);
+ await recordInvoiceBankTotal(db,actor('alice'),original,clock);
+ await recordInvoiceBankTotal(db,actor('alice'),input(f.card.cardId,'revision-new',160000),clock);
+ const replay=await recordInvoiceBankTotal(db,actor('alice'),original,clock);
+ assert.equal(replay.status,'pending_divergence');
+ assert.equal(replay.reportedTotalCents,160000);
+ assert.equal(replay.latestObservation.observationId,
+  (await readInvoiceReconciliation(db,actor('alice'),f.card.cardId,'2026-11')).reconciliation.latestObservation.observationId);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM card_invoice_bank_observations').get().n,2);
 }));
