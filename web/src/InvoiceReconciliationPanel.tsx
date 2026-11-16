@@ -50,8 +50,10 @@ export function InvoiceReconciliationPanel({cardId,cycle,totalCents,onUnauthoriz
   setBusy(true);setError('');
   try{
    await request(path,{method:'POST',body:{idempotencyKey:key.current,reportedTotal:normalized}});
-   key.current=crypto.randomUUID();setValue('');
+   // A committed POST followed by a failed refresh is an ambiguous UI state.
+   // Reuse the SAME key for retry until the refreshed read model is obtained.
    const updated=await request<Page>(path+'?limit=25&offset=0');
+   key.current=crypto.randomUUID();setValue('');
    setPage(updated);setHistory(updated.observations);setOffset(updated.observations.length);
    setShowForm(false);setShowHistory(false);
   }catch(e){
