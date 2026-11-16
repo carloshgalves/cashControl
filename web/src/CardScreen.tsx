@@ -5,6 +5,7 @@ import type { Account } from './api.ts';
 import { money, parseAmount, friendlyDate, monthLabel, today } from './finance.ts';
 import './cards.css';
 import { InvoicePaymentPanel } from './InvoicePaymentPanel.tsx';
+import { InvoiceReconciliationPanel } from './InvoiceReconciliationPanel.tsx';
 
 type Card={cardId:string;name:string;institution:string|null;limitCents:number;closingDay:number;dueDay:number};
 type Purchase={purchaseId:string;title:string;merchant:string|null;purchasedOn:string;totalCents:number;installments:number};
@@ -161,6 +162,10 @@ export function CardScreen({onUnauthorized,accounts,onPaid,focusCardId,focusCycl
      <span><strong>{i.title}</strong><small>Parcela {i.installmentNo}/{i.installments} · {monthLabel(i.cycle)} · venc. {friendlyDate(i.dueOn)}</small></span>
      <b>{money(i.amountCents)}</b></div>)}
     {detail.invoice&&<InvoicePaymentPanel key={detail.invoice.cardId+'-'+detail.invoice.cycle} invoice={detail.invoice} accounts={accounts} onPaid={onPaid} onUnauthorized={onUnauthorized}/>}
+    {detail.invoice&&<InvoiceReconciliationPanel key={'reconcile-'+detail.invoice.cardId+'-'+detail.invoice.cycle}
+      cardId={detail.invoice.cardId} cycle={detail.invoice.cycle} totalCents={detail.invoice.totalCents}
+      onUnauthorized={onUnauthorized}/>}
+
    </section>}
    <p className="credit-disclaimer">Compras a crédito geram compromissos, não débitos bancários. Pagamentos de fatura debitam uma vez no fluxo de caixa. O painel geral de obrigações ainda mostra apenas compromissos comuns; para o saldo das faturas, consulte esta seção.</p>
   </>}
