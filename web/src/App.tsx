@@ -4,6 +4,7 @@ import { ApiError, allPages, getSession, login, logout, request, snapshot } from
 import { AlertPreview, TimelineScreen } from './Trail.tsx';
 import { ReportDialog } from './ReportDialog.tsx';
 import { CardScreen } from './CardScreen.tsx';
+import { WorkScreen } from './WorkScreen.tsx';
 import type { TrailFilter } from './trail.ts';
 import type { Account, Obligation, Movement, Session, Dashboard } from './api.ts';
 import {
@@ -12,17 +13,17 @@ import {
   friendlyDate,
 } from './finance.ts';
 
-type View = 'overview' | 'movement' | 'trail' | 'calendar' | 'accounts' | 'cards';
+type View = 'overview' | 'movement' | 'trail' | 'calendar' | 'accounts' | 'cards' | 'works';
 type EntryMode = 'income' | 'expense' | 'transfer' | 'pay' | 'account';
 type Data = Awaited<ReturnType<typeof snapshot>>;
 const names: Record<View, string> = {
-  overview: 'Panorama', movement: 'Movimentos', trail: 'Trilha financeira', calendar: 'Agenda', accounts: 'Minhas contas', cards: 'Cartões',
+  overview: 'Panorama', movement: 'Movimentos', trail: 'Trilha financeira', calendar: 'Agenda', accounts: 'Minhas contas', cards: 'Cartões', works: 'Trabalhos',
 };
 const controls: { value: View; icon: string; short: string }[] = [
   { value: 'overview', icon: '◫', short: 'Início' }, { value: 'movement', icon: '↗', short: 'Fluxo' },
   { value: 'trail', icon: '◉', short: 'Trilha' },
   { value: 'calendar', icon: '▦', short: 'Agenda' }, { value: 'accounts', icon: '◩', short: 'Contas' },
-  { value: 'cards', icon: '▤', short: 'Cartões' },
+  { value: 'cards', icon: '▤', short: 'Cartões' }, { value: 'works', icon: '▣', short: 'Trabalhos' },
 ];
 const methodNames: Record<string, string> = { pix: 'Pix', cash: 'Espécie', debit: 'Débito', bank_transfer: 'Transferência externa' };
 function Icon({ children }: { children: ReactNode }) {
@@ -419,12 +420,12 @@ export function App() {
           view==='overview' ? 'Seu dinheiro tem um ritmo.' :
             view==='movement' ? 'A história do seu dinheiro.' :
             view==='trail' ? 'Sua trilha financeira.' :
-            view==='calendar' ? 'O que vem pela frente.' : view==='cards' ? 'Seu crédito sem confusões.' : 'Onde está seu dinheiro.'
+            view==='calendar' ? 'O que vem pela frente.' : view==='cards' ? 'Seu crédito sem confusões.' : view==='works' ? 'Seu trabalho, seus resultados.' : 'Onde está seu dinheiro.'
         }</h1><p>{view==='overview' ? 'O que mudou, o que vem e onde você pode agir.' :
           view==='movement' ? 'Entradas, saídas, reembolsos e transferências sem dupla contagem.' :
           view==='trail' ? 'Eventos reais, compromissos futuros e vencimentos para explorar.' :
           view==='calendar' ? 'Compromissos futuros, sem confundir vencimento com pagamento.' :
-          view==='cards' ? 'Compras parceladas e faturas, sem débito bancário antes do pagamento.' :
+          view==='cards' ? 'Compras parceladas e faturas, sem débito bancário antes do pagamento.' : view==='works' ? 'Serviços, recebimentos e custos sem duplicar seu caixa.' :
           'O dinheiro muda de lugar sem virar uma nova receita.'}</p></div>
         <div className="period-control" aria-label="Mês de referência">
           <button onClick={()=>changeMonth(-1)} aria-label="Mês anterior">‹</button>
@@ -441,6 +442,7 @@ export function App() {
           onFocusConsumed={clearCardJump}
           onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}}
           onUnauthorized={invalidateSession}/>}
+        {view==='works' && <WorkScreen refreshKey={refreshKey} onUnauthorized={invalidateSession} onNewMovement={()=>moveTo('movement')}/>}
         {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')} onOpenCard={openCardAlert}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
           onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onOpenCard={openCardAlert}
