@@ -10,6 +10,7 @@ function owner(a:AuthenticatedActor){if(!a||typeof a.userId!=='string'||!a.userI
 function id(x:string){if(typeof x!=='string'||!UUID.test(x))throw new TypeError('Invalid ID');return x;}
 function key(x:string){if(typeof x!=='string'||!/^[A-Za-z0-9_-]{12,128}$/.test(x))throw new TypeError('Invalid key');return x;}
 function label(x:unknown,max=120){if(x===null||x===undefined)return null;if(typeof x!=='string'||!x.trim()||x.trim().length>max||/[\x00-\x1f\x7f]/.test(x))throw new TypeError('Invalid label');return x.trim();}
+function notesLabel(x:unknown){if(x===null||x===undefined)return null;if(typeof x!=='string')throw new TypeError('Invalid notes');const clean=x.replace(/\r\n?/g,'\n').trim();if(!clean||clean.length>500||/[\x00-\x08\x0b-\x1f\x7f]/.test(clean))throw new TypeError('Invalid notes');return clean;}
 function date(x:unknown){if(x===null||x===undefined)return null;if(typeof x!=='string')throw new TypeError('Invalid date');validateDate(x);return x;}
 function paging(limit:number,offset:number){if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>100000)throw new TypeError('Invalid page');}
 interface Row{work_id:string;title:string;client_label:string|null;expected_cents:number|null;planned_on:string|null;due_on:string|null;category:string|null;notes:string|null;created_at:string;state:State;received_cents:number;cost_cents:number}
@@ -34,7 +35,7 @@ export async function listWorks(db:FinancialDatabase,a:AuthenticatedActor,limit=
  return rows.results.map(view);
 }
 export async function createWork(db:FinancialDatabase,a:AuthenticatedActor,input:NewWork,clock=()=>new Date()){
- const who=owner(a),k=key(input.idempotencyKey),title=label(input.title),client=label(input.client),category=label(input.category,80),notes=label(input.notes,500);
+ const who=owner(a),k=key(input.idempotencyKey),title=label(input.title),client=label(input.client),category=label(input.category,80),notes=notesLabel(input.notes);
  if(!title)throw new TypeError('Title required');
  const expected=input.expectedCents??null;if(expected!==null)assertCents(expected);
  const planned=date(input.plannedOn),due=date(input.dueOn);
@@ -69,7 +70,7 @@ export async function linkWorkMovement(db:FinancialDatabase,a:AuthenticatedActor
  try{await db.prepare('INSERT INTO work_movement_links(owner_user_id,work_id,movement_id,creation_key,created_at) VALUES(?,?,?,?,?)').bind(who,wid,mid,k,clock().toISOString()).run();}
  catch(e){if(!await replay()){
   // Distinguish deliberate linkage rejection from unexpected storage failure.
-  if(e instanceof Error&&/WORK_LINK_INVALID|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
+  if(e instanceof Error&&/WORK_LINK_INVALID|WORK_LINK_ALREADY_USED|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
   throw e;
  }}
  return getWork(db,a,wid);

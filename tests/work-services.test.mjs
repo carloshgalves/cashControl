@@ -6,6 +6,8 @@ import { createAccount } from '../src/backend/accounts/accounts.ts';
 import { postMovement } from '../src/backend/movements/movements.ts';
 import { createWork,getWork,listWorks,changeWorkState,linkWorkMovement,getWorkHistory,getWorkMovements,availableWorkMovements,WorkConflict,WorkNotFound } from '../src/backend/work/work.ts';
 import { getDashboard } from '../src/backend/dashboard/dashboard.ts';
+import { makeReport, totalsOf } from '../src/backend/reports/report.ts';
+import { readExportTimeline } from '../src/backend/timeline/timeline.ts';
 import { handleFinancialHttp } from '../src/backend/http/accounts-handler.ts';
 import { refundPaidExpense } from '../src/backend/compensations/compensations.ts';
 class Stmt {
@@ -183,4 +185,37 @@ test('E1 concurrent conflicting work attribution and final state transitions rem
  ]);
  assert.equal(transitions.filter(x=>x.status==='fulfilled').length,1);
  assert.equal((await getWorkHistory(db,actor('alice'),one.workId)).filter(x=>x.state==='canceled').length,1);
+}));
+
+
+test('E1 INSERT OR REPLACE cannot rewrite immutable work, reassign links or forge state chronology',()=>using(async db=>{
+ const a=await account(db),one=await work(db,'one'),two=await work(db,'two');
+ const m=await move(db,a,'linked','income',10000);await link(db,one,m,'immutable-link');
+ db.raw.exec('PRAGMA recursive_triggers=OFF');
+ assert.throws(()=>db.raw.prepare("INSERT OR REPLACE INTO work_services(owner_user_id,work_id,creation_key,title,created_at) VALUES(?,?,?,?,?)").run('alice',one.workId,key('other'),'Rewritten',clock().toISOString()),/WORK_HISTORY_IMMUTABLE/);
+ assert.throws(()=>db.raw.prepare('INSERT OR REPLACE INTO work_movement_links(owner_user_id,work_id,movement_id,creation_key,created_at) VALUES(?,?,?,?,?)').run('alice',two.workId,m.movementId,key('different'),clock().toISOString()),/WORK_LINK_ALREADY_USED/);
+ assert.throws(()=>db.raw.prepare("INSERT INTO work_state_events(seq,owner_user_id,work_id,creation_key,state,created_at) VALUES(?,?,?,?,?,?)").run(99,'alice',one.workId,key('fake-seq'),'confirmed',clock().toISOString()),/WORK_HISTORY_IMMUTABLE/);
+ assert.equal((await getWork(db,actor('alice'),one.workId)).receivedCents,10000);
+ assert.equal((await getWork(db,actor('alice'),two.workId)).receivedCents,0);
+ assert.equal((await getWork(db,actor('alice'),one.workId)).state,'planned');
+}));
+
+test('E1 work attribution never duplicates timeline or XLSX/PDF cashflow',()=>using(async db=>{
+ const a=await account(db),w=await work(db);
+ const income=await move(db,a,'received','income',30000),f=await move(db,a,'fuel','expense',4000),m=await move(db,a,'materials','expense',6000);
+ const filter={...period,asOf:'2026-11-11',status:'all'};
+ const before=await readExportTimeline(db,actor('alice'),filter);
+ await link(db,w,income,'l-income');await link(db,w,f,'l-fuel');await link(db,w,m,'l-material');
+ const after=await readExportTimeline(db,actor('alice'),filter);
+ assert.deepEqual(after,before);
+ assert.deepEqual(totalsOf(after),{incomeCents:30000,expensesCents:10000,refundsCents:0,transfersCents:0,outstandingCents:0,netCents:20000});
+ for(const format of ['xlsx','pdf']){
+  const doc=await makeReport(db,actor('alice'),{...filter,format});
+  assert.equal(doc.rows,3);assert.ok(doc.bytes.length>100);
+ }
+}));
+test('E1 notes accept ordinary line breaks but reject unsafe control characters',()=>using(async db=>{
+ const w=await createWork(db,actor('alice'),{idempotencyKey:key('notes'),title:'Notes',notes:'Etapa 1\r\nEtapa 2'},clock);
+ assert.equal(w.notes,'Etapa 1\nEtapa 2');
+ await assert.rejects(()=>createWork(db,actor('alice'),{idempotencyKey:key('control'),title:'Notes',notes:'A\u0000B'},clock),TypeError);
 }));

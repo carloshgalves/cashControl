@@ -12,7 +12,7 @@ CREATE TABLE work_services (
  PRIMARY KEY(owner_user_id,work_id), UNIQUE(owner_user_id,creation_key)
 );
 CREATE TABLE work_state_events (
- seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ seq INTEGER PRIMARY KEY AUTOINCREMENT CHECK(seq>0),
  owner_user_id TEXT NOT NULL, work_id TEXT NOT NULL, creation_key TEXT NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('planned','confirmed','realized','canceled')),
  reason TEXT CHECK(reason IS NULL OR (state='canceled' AND length(trim(reason)) BETWEEN 1 AND 120)),
@@ -64,3 +64,15 @@ CREATE TRIGGER work_state_events_no_update BEFORE UPDATE ON work_state_events BE
 CREATE TRIGGER work_state_events_no_delete BEFORE DELETE ON work_state_events BEGIN SELECT RAISE(ABORT,'WORK_HISTORY_IMMUTABLE'); END;
 CREATE TRIGGER work_movement_links_no_update BEFORE UPDATE ON work_movement_links BEGIN SELECT RAISE(ABORT,'WORK_HISTORY_IMMUTABLE'); END;
 CREATE TRIGGER work_movement_links_no_delete BEFORE DELETE ON work_movement_links BEGIN SELECT RAISE(ABORT,'WORK_HISTORY_IMMUTABLE'); END;
+
+-- BEFORE INSERT guards also cover SQLite INSERT OR REPLACE, whose implicit
+-- DELETE can otherwise bypass DELETE triggers with recursive_triggers OFF.
+CREATE TRIGGER work_services_no_replace BEFORE INSERT ON work_services
+WHEN EXISTS(SELECT 1 FROM work_services w WHERE w.owner_user_id=NEW.owner_user_id AND (w.work_id=NEW.work_id OR w.creation_key=NEW.creation_key))
+BEGIN SELECT RAISE(ABORT,'WORK_HISTORY_IMMUTABLE'); END;
+CREATE TRIGGER work_states_no_replace BEFORE INSERT ON work_state_events
+WHEN NEW.seq<>-1 OR EXISTS(SELECT 1 FROM work_state_events s WHERE s.owner_user_id=NEW.owner_user_id AND s.creation_key=NEW.creation_key)
+BEGIN SELECT RAISE(ABORT,'WORK_HISTORY_IMMUTABLE'); END;
+CREATE TRIGGER work_links_no_replace BEFORE INSERT ON work_movement_links
+WHEN EXISTS(SELECT 1 FROM work_movement_links l WHERE l.owner_user_id=NEW.owner_user_id AND (l.movement_id=NEW.movement_id OR l.creation_key=NEW.creation_key))
+BEGIN SELECT RAISE(ABORT,'WORK_LINK_ALREADY_USED'); END;

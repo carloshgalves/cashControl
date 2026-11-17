@@ -50,7 +50,7 @@ export function WorkScreen({onUnauthorized,refreshKey,canRegisterMovement,onNewM
   }catch(e){fail(e);}finally{setBusy(false);}
  }
  const update=(k:keyof typeof draft,v:string)=>{keys.current.create=crypto.randomUUID();setDraft(d=>({...d,[k]:v}));};
- return <section className="credit-screen" aria-label="Trabalhos e serviços">
+ return <section className="credit-screen work-screen" aria-label="Trabalhos e serviços">
   <div className="credit-toolbar"><div><h2>Trabalhos e serviços</h2><p>Cadastro opcional. Planejar ou realizar um serviço não registra receita. Vincule somente movimentações efetivas.</p></div>
    <button type="button" className="primary-btn" disabled={!usable} onClick={()=>setCreate(v=>!v)}>＋ Novo trabalho</button></div>
   {error&&<p role="alert" className="form-error">{error}</p>}
@@ -71,7 +71,7 @@ export function WorkScreen({onUnauthorized,refreshKey,canRegisterMovement,onNewM
   {loaded&&!loading&&working&&<section className="credit-panel" aria-label="Detalhe do trabalho">
     <h3>{working.title}</h3><p>{states[working.state]} · {receipts[working.receiptState]}</p>
     <p className="small-note">{working.client??'Sem contratante informado'} · {working.category??'Sem categoria'}{working.plannedOn?' · Previsto: '+friendlyDate(working.plannedOn):''}{working.dueOn?' · Recebimento previsto: '+friendlyDate(working.dueOn):''}</p>
-    {working.notes&&<p>{working.notes}</p>}
+    {working.notes&&<p className="work-notes">{working.notes}</p>}
     <div className="credit-reconcile-values">
      <span>Recebido<strong>{money(working.receivedCents)}</strong></span>
      <span>Custos líquidos<strong>{money(working.costCents)}</strong></span>
