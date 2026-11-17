@@ -70,7 +70,7 @@ export async function linkWorkMovement(db:FinancialDatabase,a:AuthenticatedActor
  try{await db.prepare('INSERT INTO work_movement_links(owner_user_id,work_id,movement_id,creation_key,created_at) VALUES(?,?,?,?,?)').bind(who,wid,mid,k,clock().toISOString()).run();}
  catch(e){if(!await replay()){
   // Distinguish deliberate linkage rejection from unexpected storage failure.
-  if(e instanceof Error&&/WORK_LINK_INVALID|WORK_LINK_ALREADY_USED|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
+  if(e instanceof Error&&/WORK_LINK_INVALID|WORK_LINK_ALREADY_USED|WORK_TOTAL_TOO_LARGE|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
   throw e;
  }}
  return getWork(db,a,wid);

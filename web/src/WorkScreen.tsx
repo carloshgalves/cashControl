@@ -93,7 +93,7 @@ export function WorkScreen({onUnauthorized,refreshKey,canRegisterMovement,onNewM
     <button className="outline-btn" type="button" disabled={!canRegisterMovement||busy} onClick={()=>onNewMovement('expense')}>Registrar custo</button>
     <form className="credit-form" aria-label="Vincular movimentação" onSubmit={link}><fieldset disabled={busy} className="work-fieldset">
       <label>Movimentação disponível<select required value={movement} onChange={e=>{keys.current.link=crypto.randomUUID();setMovement(e.target.value);}}>
-       <option value="">Selecione</option>{available.map(m=><option key={m.movementId} value={m.movementId}>{m.direction==='income'?'Recebimento':'Custo'} · {m.description} · {money(m.amountCents)} · {m.occurredOn}</option>)}</select></label>
+       <option value="">Selecione</option>{available.map(m=><option key={m.movementId} value={m.movementId}>{m.direction==='income'?'Recebimento':'Custo'} · {m.description} · {money(m.amountCents-m.refundedCents)}{m.refundedCents?' (líquido de reembolso)':''} · {m.occurredOn}</option>)}</select></label>
       <button className="primary-btn" type="submit" disabled={!usable||!movement}>Vincular movimentação</button></fieldset>
     </form>
     {links.length===0&&<p>Nenhum recebimento ou custo vinculado.</p>}

@@ -76,3 +76,22 @@ BEGIN SELECT RAISE(ABORT,'WORK_HISTORY_IMMUTABLE'); END;
 CREATE TRIGGER work_links_no_replace BEFORE INSERT ON work_movement_links
 WHEN EXISTS(SELECT 1 FROM work_movement_links l WHERE l.owner_user_id=NEW.owner_user_id AND (l.movement_id=NEW.movement_id OR l.creation_key=NEW.creation_key))
 BEGIN SELECT RAISE(ABORT,'WORK_LINK_ALREADY_USED'); END;
+
+-- A successful link must leave a readable, exact integer-cent aggregate.
+-- Protect the write itself (not just a later JS response). Refunds can only
+-- reduce net expense, so they need no additional upper-bound check here.
+CREATE TRIGGER work_link_safe_total BEFORE INSERT ON work_movement_links
+BEGIN
+ SELECT RAISE(ABORT,'WORK_TOTAL_TOO_LARGE') WHERE EXISTS(
+  SELECT 1 FROM work_service_totals w JOIN posted_cash_movements m
+  ON m.owner_user_id=w.owner_user_id AND m.movement_id=NEW.movement_id
+  WHERE w.owner_user_id=NEW.owner_user_id AND w.work_id=NEW.work_id
+   AND (
+    (m.direction='income' AND m.amount_cents>9007199254740991-w.received_cents)
+    OR (m.direction='expense' AND m.amount_cents-COALESCE((
+      SELECT SUM(r.amount_cents) FROM cash_refunds r
+      WHERE r.owner_user_id=m.owner_user_id AND r.original_movement_id=m.movement_id
+    ),0)>9007199254740991-w.cost_cents)
+   )
+ );
+END;

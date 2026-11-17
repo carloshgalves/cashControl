@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { createAccount } from '../src/backend/accounts/accounts.ts';
+import { createCard,createPurchase } from '../src/backend/cards/cards.ts';
+import { payInvoice } from '../src/backend/cards/invoice-payments.ts';
 import { postMovement } from '../src/backend/movements/movements.ts';
 import { createWork,getWork,listWorks,changeWorkState,linkWorkMovement,getWorkHistory,getWorkMovements,availableWorkMovements,WorkConflict,WorkNotFound } from '../src/backend/work/work.ts';
 import { getDashboard } from '../src/backend/dashboard/dashboard.ts';
@@ -218,4 +220,34 @@ test('E1 notes accept ordinary line breaks but reject unsafe control characters'
  const w=await createWork(db,actor('alice'),{idempotencyKey:key('notes'),title:'Notes',notes:'Etapa 1\r\nEtapa 2'},clock);
  assert.equal(w.notes,'Etapa 1\nEtapa 2');
  await assert.rejects(()=>createWork(db,actor('alice'),{idempotencyKey:key('control'),title:'Notes',notes:'A\u0000B'},clock),TypeError);
+}));
+
+
+test('E1 safe centavo aggregate guard rejects the overflowing link before persisting',()=>using(async db=>{
+ const a=await account(db),w=await work(db);
+ const raw=db.raw.prepare("INSERT INTO posted_cash_movements(owner_user_id,movement_id,creation_key,account_id,direction,amount_cents,payment_method,description,occurred_on,created_at) VALUES(?,?,?,?,'income',?,'pix','Test large receipt','2026-11-11',?)");
+ const attach=db.raw.prepare('INSERT INTO work_movement_links(owner_user_id,work_id,movement_id,creation_key,created_at) VALUES(?,?,?,?,?)');
+ db.raw.exec('BEGIN IMMEDIATE');
+ for(let n=0;n<1000;n++){
+  const mid=crypto.randomUUID();
+  raw.run('alice',mid,key('large-'+n),a.accountId,9000000000000,clock().toISOString());
+  attach.run('alice',w.workId,mid,key('link-'+n),clock().toISOString());
+ }
+ const extra=crypto.randomUUID();
+ raw.run('alice',extra,key('extra-large'),a.accountId,9000000000000,clock().toISOString());
+ db.raw.exec('COMMIT');
+ await assert.rejects(()=>linkWorkMovement(db,actor('alice'),w.workId,{idempotencyKey:key('overflow'),movementId:extra},clock),WorkConflict);
+ assert.equal((await getWork(db,actor('alice'),w.workId)).receivedCents,9000000000000000);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM work_movement_links').get().n,1000);
+}));
+
+test('E1 card invoice settlement is not an individualized work cost and cannot be linked',()=>using(async db=>{
+ const a=await account(db),w=await work(db);
+ const card=await createCard(db,actor('alice'),{idempotencyKey:key('card'),name:'Cartão E1',limitCents:100000,closingDay:25,dueDay:5},clock);
+ await createPurchase(db,actor('alice'),{idempotencyKey:key('purchase'),cardId:card.cardId,title:'Compra de cartão',purchasedOn:'2026-11-11',totalCents:10000,installments:1},clock);
+ const payment=await payInvoice(db,actor('alice'),{idempotencyKey:key('pay-card'),cardId:card.cardId,cycle:'2026-11',accountId:a.accountId,amountCents:10000,method:'pix',paidOn:'2026-11-11'},clock);
+ assert.deepEqual(await availableWorkMovements(db,actor('alice')),[]);
+ await assert.rejects(()=>linkWorkMovement(db,actor('alice'),w.workId,{idempotencyKey:key('link-card'),movementId:payment.movementId},clock),WorkConflict);
+ assert.equal((await getWork(db,actor('alice'),w.workId)).costCents,0);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,10000);
 }));
