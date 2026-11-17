@@ -1,3 +1,4 @@
+import { createWork,listWorks,getWork,changeWorkState,linkWorkMovement,getWorkHistory,getWorkMovements,availableWorkMovements,WorkNotFound,WorkConflict } from '../work/work.ts';
 import { createAccount, getAccount, listAccounts, type AuthenticatedActor, type FinancialDatabase } from '../accounts/accounts.ts';
 import { parseCents } from '../../domain/money.ts';
 import { getMovement, listMovements, postMovement } from '../movements/movements.ts';
@@ -260,6 +261,47 @@ export async function handleFinancialHttp(
       });
       return json({ transfer }, 201);
     }
+
+    if(path==='/api/works'||path==='/api/work-movements/available'||path.startsWith('/api/works/')){
+      const match=path.match(/^\/api\/works\/([0-9a-f-]{36})(?:\/(states|movements))?$/);
+      const paged=path==='/api/works'||path==='/api/work-movements/available'||!!match?.[2];
+      const allowed=method==='GET'&&paged?new Set(['limit','offset']):new Set<string>();
+      let invalid=false;
+      requestURL.searchParams.forEach((_v,k)=>{if(!allowed.has(k)||requestURL.searchParams.getAll(k).length!==1)invalid=true;});
+      if(invalid)return error(400,'INVALID_FILTER');
+      const page=(k:string,def:number)=>{const v=requestURL.searchParams.get(k);if(v===null)return def;if(!/^(?:0|[1-9]\d{0,5})$/.test(v))throw new TypeError('Invalid page');return Number(v);};
+      if(method==='GET'){
+        if(path==='/api/works')return json({works:await listWorks(database,actor,page('limit',50),page('offset',0))});
+        if(path==='/api/work-movements/available')return json({movements:await availableWorkMovements(database,actor,page('limit',50),page('offset',0))});
+        if(match?.[2]==='states')return json({states:await getWorkHistory(database,actor,match[1]!,page('limit',50),page('offset',0))});
+        if(match?.[2]==='movements')return json({movements:await getWorkMovements(database,actor,match[1]!,page('limit',50),page('offset',0))});
+        if(match)return json({work:await getWork(database,actor,match[1]!)});
+        return error(404,'NOT_FOUND');
+      }
+      if(path!=='/api/works'&&!match?.[2])return error(404,'NOT_FOUND');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,4096);if(!bytes)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const p=raw as Record<string,unknown>;
+      const fields=path==='/api/works'?['idempotencyKey','title','client','expected','plannedOn','dueOn','category','notes']:
+        match?.[2]==='states'?['idempotencyKey','state','reason']:['idempotencyKey','movementId'];
+      if(Object.keys(p).some(k=>!fields.includes(k))||typeof p.idempotencyKey!=='string')return error(400,'INVALID_BODY');
+      if(path==='/api/works'){
+        if(typeof p.title!=='string'||['client','expected','plannedOn','dueOn','category','notes'].some(k=>p[k]!==undefined&&p[k]!==null&&typeof p[k]!=='string'))return error(400,'INVALID_BODY');
+        const str=(k:string)=>p[k] as string|null|undefined;
+        return json({work:await createWork(database,actor,{idempotencyKey:p.idempotencyKey,title:p.title,
+          client:str('client'),expectedCents:typeof p.expected==='string'?parseCents(p.expected):null,
+          plannedOn:str('plannedOn'),dueOn:str('dueOn'),category:str('category'),notes:str('notes')})},201);
+      }
+      if(match?.[2]==='states'){
+        if((p.state!=='confirmed'&&p.state!=='realized'&&p.state!=='canceled')||(p.reason!==undefined&&p.reason!==null&&typeof p.reason!=='string'))return error(400,'INVALID_BODY');
+        return json({work:await changeWorkState(database,actor,match[1]!,{idempotencyKey:p.idempotencyKey,state:p.state,reason:p.reason as string|null|undefined})},201);
+      }
+      if(typeof p.movementId!=='string')return error(400,'INVALID_BODY');
+      return json({work:await linkWorkMovement(database,actor,match![1]!,{idempotencyKey:p.idempotencyKey,movementId:p.movementId})},201);
+    }
+
     // SPEC-004 / D1: credit is a commitment, never an immediate cash flow.
     // All paths share the verified Better Auth principal and strict origin.
     if (path.startsWith('/api/cards')) {
@@ -571,6 +613,8 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof WorkNotFound)return error(404,'NOT_FOUND');
+    if(cause instanceof WorkConflict)return error(409,'CONFLICT');
     if (cause instanceof CreditCardUnavailable || cause instanceof CreditPurchaseUnavailable ||
       cause instanceof CreditInvoiceUnavailable) return error(404,'NOT_FOUND');
     if (cause instanceof CreditInvoiceInsufficient) return error(409,'INVOICE_OVERPAYMENT');
