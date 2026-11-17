@@ -5,14 +5,17 @@ CREATE TABLE work_services (
  title TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 120),
  client_label TEXT CHECK(client_label IS NULL OR length(trim(client_label)) BETWEEN 1 AND 120),
  expected_cents INTEGER CHECK(expected_cents IS NULL OR (typeof(expected_cents)='integer' AND expected_cents BETWEEN 0 AND 9000000000000)),
- planned_on TEXT, due_on TEXT, category TEXT, notes TEXT, created_at TEXT NOT NULL,
+ planned_on TEXT CHECK(planned_on IS NULL OR (length(planned_on)=10 AND planned_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(planned_on,'+0 days')=planned_on)),
+ due_on TEXT CHECK(due_on IS NULL OR (length(due_on)=10 AND due_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(due_on,'+0 days')=due_on)),
+ category TEXT CHECK(category IS NULL OR length(trim(category)) BETWEEN 1 AND 80),
+ notes TEXT CHECK(notes IS NULL OR length(trim(notes)) BETWEEN 1 AND 500), created_at TEXT NOT NULL,
  PRIMARY KEY(owner_user_id,work_id), UNIQUE(owner_user_id,creation_key)
 );
 CREATE TABLE work_state_events (
  seq INTEGER PRIMARY KEY AUTOINCREMENT,
  owner_user_id TEXT NOT NULL, work_id TEXT NOT NULL, creation_key TEXT NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('planned','confirmed','realized','canceled')),
- reason TEXT CHECK(reason IS NULL OR length(trim(reason)) BETWEEN 1 AND 120),
+ reason TEXT CHECK(reason IS NULL OR (state='canceled' AND length(trim(reason)) BETWEEN 1 AND 120)),
  created_at TEXT NOT NULL,
  UNIQUE(owner_user_id,creation_key),
  FOREIGN KEY(owner_user_id,work_id) REFERENCES work_services(owner_user_id,work_id)

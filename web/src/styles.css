@@ -250,3 +250,6 @@ small,.muted { color: var(--secondary); }
   .agenda-detail { align-items: start; flex-direction: column; }
 }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition: none!important; animation: none!important; scroll-behavior: auto!important; } }
+
+.work-fieldset{display:grid;gap:10px;border:0;padding:0;margin:0;min-width:0}.work-fieldset select,.work-fieldset input,.work-fieldset textarea{width:100%;min-width:0;max-width:100%;box-sizing:border-box}.work-fieldset textarea{resize:vertical}.mobile-nav button{min-width:0;overflow-wrap:anywhere}
+@media(max-width:430px){.mobile-nav button{font-size:9px;padding-inline:1px}}
