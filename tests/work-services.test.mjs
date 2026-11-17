@@ -46,7 +46,7 @@ async function account(db,user='alice'){
  return createAccount(db,actor(user),{idempotencyKey:key('account-'+user),name:'Conta',kind:'general',funding:{mode:'external',cents:0}},clock);
 }
 async function move(db,a,tag,direction,cents,user='alice'){
- return postMovement(db,actor(user),{idempotencyKey:key(tag),accountId:a.accountId,direction,amountCents:cents,method:'pix',description:tag,occurredOn:'2026-11-11'},clock);
+ return postMovement(db,actor(user),{idempotencyKey:key(tag.replaceAll(' ','-')),accountId:a.accountId,direction,amountCents:cents,method:'pix',description:tag,occurredOn:'2026-11-11'},clock);
 }
 async function work(db,tag='service',user='alice',expectedCents=30000){
  return createWork(db,actor(user),{idempotencyKey:key(tag),title:'Freelancer',client:'Cliente',expectedCents,plannedOn:'2026-11-11',dueOn:'2026-11-25'},clock);
