@@ -145,5 +145,12 @@ for(const path of [
  });
 }
 
+for(const path of ['/api/works','/api/works/:workId','/api/works/:workId/states','/api/works/:workId/movements','/api/work-movements/available']){
+ app.all(path,c=>{
+  const auth=createWorkerAuth(c.env);
+  return handleFinancialHttp(c.req.raw,c.env.DB as unknown as FinancialDatabase,
+   async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),configuredOrigin(c.env));
+ });
+}
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;

@@ -1,6 +1,6 @@
 # Backlog do cashControl — SPEC → tickets (2026-11-10)
 
-**Estado:** planejamento registrado em 2026-11-10; núcleo P0, cartões D1 (#19/PR #41) e pagamentos D2 (#20/PR #42) integrados em `main`. A conferência manual de faturas D3 (#21) está em PR Draft de revisão. Consulte o README e as PRs para o status real.  
+**Estado:** planejamento registrado em 2026-11-10; núcleo P0, cartões D1 (#19/PR #41) e pagamentos D2 (#20/PR #42) integrados em `main`. A conferência manual de faturas D3 (#21/PR #43) foi integrada em `main`; trabalhos e custos E1 (#22) estão em revisão. Consulte o README e as PRs para o status real.  
 **Base:** [SPEC-000](../specs/SPEC-000-produto-mvp.md) · [DEC-001 a DEC-014](../decisions/DECISOES-DE-NEGOCIO.md)
 
 ## Estrutura
