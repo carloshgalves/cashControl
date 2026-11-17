@@ -5,8 +5,8 @@ CREATE TABLE work_services (
  title TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 120),
  client_label TEXT CHECK(client_label IS NULL OR length(trim(client_label)) BETWEEN 1 AND 120),
  expected_cents INTEGER CHECK(expected_cents IS NULL OR (typeof(expected_cents)='integer' AND expected_cents BETWEEN 0 AND 9000000000000)),
- planned_on TEXT CHECK(planned_on IS NULL OR (length(planned_on)=10 AND planned_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(planned_on,'+0 days')=planned_on)),
- due_on TEXT CHECK(due_on IS NULL OR (length(due_on)=10 AND due_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(due_on,'+0 days')=due_on)),
+ planned_on TEXT CHECK(planned_on IS NULL OR (length(planned_on)=10 AND planned_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(planned_on,'+0 days') IS NOT NULL AND date(planned_on,'+0 days')=planned_on AND substr(planned_on,1,4)>='1000')),
+ due_on TEXT CHECK(due_on IS NULL OR (length(due_on)=10 AND due_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(due_on,'+0 days') IS NOT NULL AND date(due_on,'+0 days')=due_on AND substr(due_on,1,4)>='1000')),
  category TEXT CHECK(category IS NULL OR length(trim(category)) BETWEEN 1 AND 80),
  notes TEXT CHECK(notes IS NULL OR length(trim(notes)) BETWEEN 1 AND 500), created_at TEXT NOT NULL,
  PRIMARY KEY(owner_user_id,work_id), UNIQUE(owner_user_id,creation_key)

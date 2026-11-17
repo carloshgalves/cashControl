@@ -437,12 +437,13 @@ export function App() {
       {loading && <div className="loading-panel" role="status">Atualizando valores e compromissos…</div>}
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
+      {view==='works' && <WorkScreen key={session.user.id} refreshKey={refreshKey} canRegisterMovement={!!data&&!loading&&!error}
+        onUnauthorized={invalidateSession} onNewMovement={direction=>setModal({mode:accounts.length?direction:'account'})}/>}
       {data && !loading && !error && <>
         {view==='cards' && <CardScreen accounts={accounts} focusCardId={cardJump?.cardId} focusCycle={cardJump?.cycle}
           onFocusConsumed={clearCardJump}
           onPaid={()=>{setNotice('Fatura paga. Saldo e extratos serão atualizados.');setRefreshKey(x=>x+1);}}
           onUnauthorized={invalidateSession}/>}
-        {view==='works' && <WorkScreen refreshKey={refreshKey} onUnauthorized={invalidateSession} onNewMovement={direction=>setModal({mode:accounts.length?direction:'account'})}/>}
         {view==='overview' && <AlertPreview refreshKey={refreshKey} onExplore={()=>moveTo('trail')} onOpenCard={openCardAlert}/>}
         {view==='trail' && <TimelineScreen month={month} obligations={data.obligations} refreshKey={refreshKey}
           onPay={bill=>setModal({mode:'pay',bill})} onCards={()=>moveTo('cards')} onOpenCard={openCardAlert}

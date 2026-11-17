@@ -67,7 +67,11 @@ export async function linkWorkMovement(db:FinancialDatabase,a:AuthenticatedActor
  const replay=async()=>{const row=await db.prepare('SELECT work_id,movement_id FROM work_movement_links WHERE owner_user_id=? AND creation_key=?').bind(who,k).first<{work_id:string;movement_id:string}>();if(!row)return false;if(row.work_id!==wid||row.movement_id!==mid)throw new WorkConflict();return true;};
  if(await replay())return getWork(db,a,wid);
  try{await db.prepare('INSERT INTO work_movement_links(owner_user_id,work_id,movement_id,creation_key,created_at) VALUES(?,?,?,?,?)').bind(who,wid,mid,k,clock().toISOString()).run();}
- catch(e){if(!await replay())throw new WorkConflict();}
+ catch(e){if(!await replay()){
+  // Distinguish deliberate linkage rejection from unexpected storage failure.
+  if(e instanceof Error&&/WORK_LINK_INVALID|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
+  throw e;
+ }}
  return getWork(db,a,wid);
 }
 export async function getWorkHistory(db:FinancialDatabase,a:AuthenticatedActor,workId:string,limit=50,offset=0){
