@@ -38,3 +38,14 @@
 .credit-invoice-balances span{display:grid;gap:5px;font-size:12px}
 .credit-payment-badge{font-size:11px;border-radius:22px;padding:6px;background:#e5f4e7;color:var(--green)}
 .credit-form select{width:100%;min-width:0;padding:11px;border:1px solid #cbd8cd;background:white;border-radius:10px}
+
+.credit-reconcile{display:grid;gap:13px;padding-top:20px;margin-top:12px;border-top:1px solid var(--line)}
+.credit-reconcile-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.credit-reconcile-values>span{display:grid;gap:6px;min-width:0;padding:13px;border:1px solid #e0e8da;border-radius:11px;font-size:11px;color:var(--secondary)}
+.credit-reconcile-values strong{font-size:16px;color:var(--ink);overflow-wrap:anywhere}
+.credit-reconcile-tag{font-size:11px;border-radius:50px;padding:7px 10px;background:#eef2ed;color:#435448;white-space:nowrap}
+.credit-reconcile-tag.matched{background:#e1f2e4;color:#28683d}
+.credit-reconcile-tag.pending_divergence{background:#fdefd6;color:#805920}
+.credit-reconcile-pending{font-size:12px;line-height:1.6;padding:13px;background:#fff6e8;border:1px solid #ead3ae;border-radius:9px;color:#795624}
+.credit-reconcile-history{display:grid;gap:4px;max-height:450px;overflow:auto}
+@media(max-width:680px){.credit-reconcile-values{grid-template-columns:1fr}.credit-reconcile .credit-toolbar{align-items:start}}
