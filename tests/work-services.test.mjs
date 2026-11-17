@@ -136,3 +136,51 @@ test('E1 HTTP auth, origin, owner, allowlist, strict money and idempotency',()=>
  assert.equal((await http(db,'/api/works','alice','POST',{...payload,title:'Changed'})).status,409);
  assert.equal((await listWorks(db,actor('alice'))).length,1);
 }));
+
+
+test('E1 refund of a linked expense reduces its net cost and cannot be attributed as revenue',()=>using(async db=>{
+ const a=await account(db),w=await work(db);
+ const receipt=await move(db,a,'receipt','income',30000),expense=await move(db,a,'material','expense',6000);
+ await link(db,w,receipt,'link-receipt');
+ await link(db,w,expense,'link-expense');
+ const refund=await refundPaidExpense(db,actor('alice'),{
+  idempotencyKey:key('refund-material'),originalMovementId:expense.movementId,accountId:a.accountId,
+  amountCents:2000,method:'pix',refundedOn:'2026-11-12',
+ },clock);
+ const result=await getWork(db,actor('alice'),w.workId);
+ assert.deepEqual([result.receivedCents,result.costCents,result.netCents],[30000,4000,26000]);
+ const linked=(await getWorkMovements(db,actor('alice'),w.workId)).find(m=>m.movementId===expense.movementId);
+ assert.equal(linked.refundedCents,2000);
+ assert.equal((await availableWorkMovements(db,actor('alice'))).length,0);
+ await assert.rejects(()=>linkWorkMovement(db,actor('alice'),w.workId,{
+  idempotencyKey:key('try-refund-credit'),movementId:refund.refundMovementId,
+ },clock),WorkConflict);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.netCents,26000);
+}));
+
+test('E1 injected initial state failure rolls back the work itself; same request can retry',()=>using(async db=>{
+ const payload={idempotencyKey:key('fault-work'),title:'Atomic work'};
+ db.raw.exec("CREATE TRIGGER e1_fault BEFORE INSERT ON work_state_events BEGIN SELECT RAISE(ABORT,'E1_FAULT'); END");
+ await assert.rejects(()=>createWork(db,actor('alice'),payload,clock),/E1_FAULT/);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM work_services').get().n,0);
+ db.raw.exec('DROP TRIGGER e1_fault');
+ const result=await createWork(db,actor('alice'),payload,clock);
+ assert.equal(result.state,'planned');
+ assert.equal((await getWorkHistory(db,actor('alice'),result.workId)).length,1);
+}));
+
+test('E1 concurrent conflicting work attribution and final state transitions remain serialized',()=>using(async db=>{
+ const a=await account(db),one=await work(db,'first'),two=await work(db,'second');
+ const m=await move(db,a,'race','income',10000);
+ const result=await Promise.allSettled([link(db,one,m,'race-one'),link(db,two,m,'race-two')]);
+ assert.equal(result.filter(x=>x.status==='fulfilled').length,1);
+ assert.equal(result.filter(x=>x.status==='rejected').length,1);
+ assert.equal(db.raw.prepare('SELECT count(*) n FROM work_movement_links').get().n,1);
+ assert.equal((await listWorks(db,actor('alice'))).reduce((s,w)=>s+w.receivedCents,0),10000);
+ const transitions=await Promise.allSettled([
+  changeWorkState(db,actor('alice'),one.workId,{idempotencyKey:key('cancel-first'),state:'canceled'},clock),
+  changeWorkState(db,actor('alice'),one.workId,{idempotencyKey:key('cancel-second'),state:'canceled'},clock),
+ ]);
+ assert.equal(transitions.filter(x=>x.status==='fulfilled').length,1);
+ assert.equal((await getWorkHistory(db,actor('alice'),one.workId)).filter(x=>x.state==='canceled').length,1);
+}));

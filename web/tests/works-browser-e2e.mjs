@@ -44,7 +44,8 @@ async function main(){
  await f.getByLabel('Valor combinado em reais (opcional)').fill('300,00');
  await f.getByRole('button',{name:'Cadastrar trabalho'}).click();
  const detail=page.getByRole('region',{name:'Detalhe do trabalho'});
- await detail.getByText('Valor combinado',{exact:true}).waitFor();
+ await detail.getByRole('heading',{name:'Freelancer E1',exact:true}).waitFor();
+ assert.equal(await detail.locator('.credit-reconcile-values > span').filter({hasText:'Valor combinado'}).count(),1);
  const works=(await (await page.request.get(APP+'/api/works')).json()).works;
  const workId=works[0].workId;
  const get=async()=>(await (await page.request.get(APP+'/api/works/'+workId)).json()).work;
