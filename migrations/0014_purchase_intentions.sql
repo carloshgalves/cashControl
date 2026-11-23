@@ -30,15 +30,18 @@ CREATE TABLE purchase_intention_events (
  action TEXT NOT NULL CHECK(action IN ('reserve','plan','exclude','convert')),
  reserved_cents INTEGER NOT NULL CHECK(typeof(reserved_cents)='integer' AND reserved_cents BETWEEN 0 AND 9000000000000),
  obligation_id TEXT,
+ conversion_due_on TEXT CHECK(conversion_due_on IS NULL OR (
+   length(conversion_due_on)=10 AND conversion_due_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+   AND date(conversion_due_on,'+0 days')=conversion_due_on AND substr(conversion_due_on,1,4)>='1000')),
  created_at TEXT NOT NULL,
  UNIQUE(owner_user_id,event_id),
  UNIQUE(owner_user_id,creation_key),
  UNIQUE(owner_user_id,obligation_id),
  FOREIGN KEY(owner_user_id,intention_id) REFERENCES purchase_intentions(owner_user_id,intention_id) ON DELETE RESTRICT,
  FOREIGN KEY(owner_user_id,obligation_id) REFERENCES financial_obligations(owner_user_id,obligation_id) ON DELETE RESTRICT,
- CHECK((action='reserve' AND reserved_cents>0 AND obligation_id IS NULL)
-    OR (action IN ('plan','exclude') AND reserved_cents=0 AND obligation_id IS NULL)
-    OR (action='convert' AND reserved_cents=0 AND obligation_id IS NOT NULL))
+ CHECK((action='reserve' AND reserved_cents>0 AND obligation_id IS NULL AND conversion_due_on IS NULL)
+    OR (action IN ('plan','exclude') AND reserved_cents=0 AND obligation_id IS NULL AND conversion_due_on IS NULL)
+    OR (action='convert' AND reserved_cents=0 AND obligation_id IS NOT NULL AND conversion_due_on IS NOT NULL))
 );
 CREATE INDEX intention_events_by_intention ON purchase_intention_events(owner_user_id,intention_id,event_seq DESC);
 CREATE TRIGGER intention_event_invariants BEFORE INSERT ON purchase_intention_events BEGIN
@@ -67,7 +70,7 @@ CREATE TRIGGER intention_event_invariants BEFORE INSERT ON purchase_intention_ev
     ON i.owner_user_id=o.owner_user_id AND i.intention_id=NEW.intention_id
     WHERE o.owner_user_id=NEW.owner_user_id AND o.obligation_id=NEW.obligation_id
       AND o.creation_key='intention-conversion:'||NEW.creation_key
-      AND o.total_cents=i.amount_cents AND o.title=i.title AND o.due_on=i.planned_on))
+      AND o.total_cents=i.amount_cents AND o.title=i.title AND o.due_on=NEW.conversion_due_on))
  ;
 END;
 CREATE TRIGGER intention_no_update BEFORE UPDATE ON purchase_intentions
