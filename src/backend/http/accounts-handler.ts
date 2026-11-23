@@ -1,3 +1,4 @@
+import {createRevision,listRevisions,createStatement,getStatement,listStatements,SalaryConflict,SalaryNotApplicable,SalaryTooLarge} from '../payroll/payroll.ts';
 import {createSource,getSource,listSources,createManualExpectation,listCalendar,changeExpectation,linkIncomeReceipt,listAvailableIncomeMovements,listExpectationEvents,listExpectationReceipts,IncomeNotFound,IncomeConflict,IncomeTooLarge} from '../income/income.ts';
 import { createWork,listWorks,getWork,changeWorkState,linkWorkMovement,getWorkHistory,getWorkMovements,availableWorkMovements,WorkNotFound,WorkConflict } from '../work/work.ts';
 import { createAccount, getAccount, listAccounts, type AuthenticatedActor, type FinancialDatabase } from '../accounts/accounts.ts';
@@ -263,6 +264,82 @@ export async function handleFinancialHttp(
       return json({ transfer }, 201);
     }
 
+
+
+    // E3 payroll composition is analytic: never credit income or pay obligations.
+    if(path.startsWith('/api/income-sources/')){
+      const salaryRevisions=path.match(/^\/api\/income-sources\/([0-9a-f-]{36})\/salary-revisions$/);
+      const salaryStatement=path.match(/^\/api\/income-sources\/([0-9a-f-]{36})\/expectations\/(scheduled_\d{4}-\d{2}-\d{2}|manual_[0-9a-f-]{36})\/salary$/);
+      if(salaryRevisions||salaryStatement){
+        let unknown=false;
+        const allowed=method==='GET'?new Set(['limit','offset']):new Set<string>();
+        requestURL.searchParams.forEach((_v,k)=>{if(!allowed.has(k)||requestURL.searchParams.getAll(k).length!==1)unknown=true;});
+        if(unknown)return error(400,'INVALID_FILTER');
+        const pg=(k:string,def:number)=>{
+          const v=requestURL.searchParams.get(k);
+          if(v===null)return def;
+          if(!/^(?:0|[1-9]\d{0,5})$/.test(v))throw new TypeError('Invalid paging');
+          return Number(v);
+        };
+        if(method==='GET'){
+          if(salaryRevisions){
+            return json({revisions:await listRevisions(database,actor,salaryRevisions[1]!,pg('limit',50),pg('offset',0))});
+          }
+          return json({
+            statement:await getStatement(database,actor,salaryStatement![1]!,salaryStatement![2]!),
+            history:await listStatements(database,actor,salaryStatement![1]!,salaryStatement![2]!,pg('limit',25),pg('offset',0)),
+          });
+        }
+        if(!request.body)return error(400,'INVALID_BODY');
+        const bytes=await readBounded(request,8192);
+        if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+        let raw:unknown;
+        try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+        catch{return error(400,'INVALID_JSON');}
+        if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+        const p=raw as Record<string,unknown>;
+        if(typeof p.idempotencyKey!=='string')return error(400,'INVALID_BODY');
+        if(salaryRevisions){
+          if(Object.keys(p).some(k=>!['idempotencyKey','effectiveOn','net','reason'].includes(k))||
+            typeof p.effectiveOn!=='string'||typeof p.net!=='string'||typeof p.reason!=='string')
+            return error(400,'INVALID_BODY');
+          return json({revision:await createRevision(database,actor,salaryRevisions[1]!,{
+            idempotencyKey:p.idempotencyKey,effectiveOn:p.effectiveOn,netCents:parseCents(p.net),reason:p.reason,
+          })},201);
+        }
+        if(Object.keys(p).some(k=>!['idempotencyKey','net','gross','discounts','components'].includes(k))||
+          typeof p.net!=='string'||(p.gross!==null&&p.gross!==undefined&&typeof p.gross!=='string')||
+          !Array.isArray(p.discounts)||!Array.isArray(p.components)||p.discounts.length>20||p.components.length>20)
+          return error(400,'INVALID_BODY');
+        const signedCents=(text:string):number=>{
+          if(typeof text!=='string')throw new TypeError('Invalid signed decimal');
+          if(text.startsWith('-'))return -parseCents(text.slice(1));
+          return parseCents(text);
+        };
+        const discounts=p.discounts.map((d:unknown)=>{
+          if(!d||typeof d!=='object'||Array.isArray(d))throw new TypeError('Invalid deduction');
+          const v=d as Record<string,unknown>;
+          if(Object.keys(v).some(k=>!['label','amount'].includes(k))||typeof v.label!=='string'||typeof v.amount!=='string')
+            throw new TypeError('Invalid deduction');
+          return {label:v.label,amountCents:parseCents(v.amount)};
+        });
+        const components=p.components.map((c:unknown)=>{
+          if(!c||typeof c!=='object'||Array.isArray(c))throw new TypeError('Invalid component');
+          const v=c as Record<string,unknown>;
+          if(Object.keys(v).some(k=>!['kind','reason','amount'].includes(k))||
+            !['overtime','bonus','other','reduction'].includes(String(v.kind))||
+            typeof v.reason!=='string'||typeof v.amount!=='string')
+            throw new TypeError('Invalid component');
+          return {kind:v.kind as 'overtime'|'bonus'|'other'|'reduction',reason:v.reason,amountCents:signedCents(v.amount)};
+        });
+        const statement=await createStatement(database,actor,salaryStatement![1]!,salaryStatement![2]!,{
+          idempotencyKey:p.idempotencyKey,netCents:parseCents(p.net),
+          grossCents:typeof p.gross==='string'?parseCents(p.gross):null,
+          discounts,components,
+        });
+        return json({statement},201);
+      }
+    }
 
     // E2: forecasts and receipt attribution never write or manufacture cash.
     if(path==='/api/income-sources'||path==='/api/income-calendar'||path==='/api/income-receipts/available'||path.startsWith('/api/income-sources/')){
@@ -697,6 +774,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof SalaryConflict)return error(409,'CONFLICT');
+    if(cause instanceof SalaryNotApplicable)return error(409,'NOT_APPLICABLE');
+    if(cause instanceof SalaryTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof IncomeNotFound)return error(404,'NOT_FOUND');
     if(cause instanceof IncomeConflict)return error(409,'CONFLICT');
     if(cause instanceof IncomeTooLarge)return error(413,'RESULT_TOO_LARGE');
