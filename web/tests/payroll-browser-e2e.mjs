@@ -91,8 +91,26 @@ async function main(){
   const salaryURL=APP+'/api/income-sources/'+src.sourceId+'/expectations/scheduled_2026-11-30/salary';
   const salary=(await (await page.request.get(salaryURL)).json());
   assert.deepEqual([salary.statement.grossStatus,salary.statement.grossDifferenceCents,salary.history.length],['pending',20000,2]);
+  await panel2.getByText('INSS',{exact:true}).first().waitFor();
+  await panel2.getByRole('button',{name:'Registrar nova versão'}).click();
+  const f3=panel2.getByRole('form',{name:'Demonstrativo de remuneração'});
+  await f3.getByLabel('Salário líquido desta competência (R$)').fill('3000,00');
+  await f3.getByLabel('Salário bruto (R$, opcional)').fill('3500,00');
+  await f3.getByRole('button',{name:'＋ Discriminar desconto'}).click();
+  await f3.getByLabel('Descrição do desconto').fill('INSS');
+  await f3.getByLabel('Valor retido (R$)').fill('300,00');
+  await f3.getByRole('button',{name:'＋ Discriminar desconto'}).click();
+  await f3.getByLabel('Descrição do desconto').nth(1).fill('IRRF');
+  await f3.getByLabel('Valor retido (R$)').nth(1).fill('200,00');
+  await f3.getByRole('button',{name:'Salvar composição sem movimentar caixa'}).click();
+  await panel2.getByText('Bruto − descontos = líquido informado.',{exact:false}).waitFor();
+  await panel2.getByText('IRRF',{exact:true}).first().waitFor();
+  const approved=(await (await page.request.get(salaryURL)).json());
+  assert.deepEqual([approved.statement.grossStatus,approved.statement.grossDifferenceCents,approved.history.length],
+   ['matched',0,3]);
+  assert.equal(approved.history[2].grossCents,null,'initial net-only statement remains in history');
   assert.equal((await (await page.request.get(APP+'/api/dashboard?from=2026-11-01&to=2026-11-30')).json()).dashboard.cashFlow.incomeCents,0);
-  console.log('E3_PAYROLL_UI_PASS: net-only, +250 overtime, Nov raise from 2500 to 2750, Dec unchanged, gross discrepancy pending, zero cash');
+  console.log('E3_PAYROLL_UI_PASS: net-only, +250 overtime, Nov raise from 2500 to 2750, Dec unchanged, gross pending then matched with itemized INSS/IRRF, zero cash');
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false,'mobile overflow');
   await page.getByRole('button',{name:'Sair com segurança'}).last().click();
