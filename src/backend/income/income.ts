@@ -266,19 +266,23 @@ export async function changeExpectation(db:FinancialDatabase,a:AuthenticatedActo
  if(!['confirmed','delayed','canceled'].includes(input.state))throw new TypeError('Invalid expectation status');
  const reason=note(input.reason);
  if(reason!==null&&input.state==='confirmed')throw new TypeError('Confirmation has no reason');
- const current=await persisted(db,who,sourceId,occ);
- const currentOn=current?.current_on??base.originalOn;
- const next=input.state==='delayed'?date(input.newOn!):currentOn;
- if(input.state==='delayed'&&next<=currentOn)throw new IncomeConflict();
  if(input.state!=='delayed'&&input.newOn!=null)throw new TypeError('Date only for postponement');
+ const requestedDelay=input.state==='delayed'?date(input.newOn!):null;
  const replay=async()=>{
   const row=await db.prepare('SELECT * FROM income_expectation_events WHERE owner_user_id=? AND creation_key=?')
    .bind(who,k).first<EventRow&{source_id:string;occurrence_key:string}>();
   if(!row)return false;
-  if(row.source_id!==sourceId||row.occurrence_key!==occ||row.state!==input.state||row.reason!==reason||row.expected_on!==next)throw new IncomeConflict();
+  // The persisted operation, not the latest date, determines idempotency:
+  // replaying an old confirmation after another postponement must not fail.
+  if(row.source_id!==sourceId||row.occurrence_key!==occ||row.state!==input.state||
+     row.reason!==reason||(requestedDelay!==null&&row.expected_on!==requestedDelay))throw new IncomeConflict();
   return true;
  };
  if(await replay())return persisted(db,who,sourceId,occ);
+ const current=await persisted(db,who,sourceId,occ);
+ const currentOn=current?.current_on??base.originalOn;
+ const next=requestedDelay??currentOn;
+ if(input.state==='delayed'&&next<=currentOn)throw new IncomeConflict();
  if(current?.state==='canceled')throw new IncomeConflict();
  try{
   const insert=db.prepare('INSERT INTO income_expectation_events(owner_user_id,source_id,occurrence_key,creation_key,state,expected_on,reason,created_at) VALUES(?,?,?,?,?,?,?,?)')
@@ -287,7 +291,7 @@ export async function changeExpectation(db:FinancialDatabase,a:AuthenticatedActo
   else await insert.run();
  }catch(e){
   if(!await replay()){
-   if(e instanceof Error&&/INCOME_EVENT_INVALID|SQLITE_CONSTRAINT|UNIQUE constraint/.test(e.message))throw new IncomeConflict();
+   if(e instanceof Error&&/INCOME_EVENT_INVALID|INCOME_IMMUTABLE|SQLITE_CONSTRAINT|UNIQUE constraint/.test(e.message))throw new IncomeConflict();
    throw e;
   }
  }
@@ -317,7 +321,7 @@ export async function linkIncomeReceipt(db:FinancialDatabase,a:AuthenticatedActo
   else await insert.run();
  }catch(e){
   if(!await replay()){
-   if(e instanceof Error&&/INCOME_RECEIPT_INVALID|SQLITE_CONSTRAINT|UNIQUE constraint/.test(e.message))throw new IncomeConflict();
+   if(e instanceof Error&&/INCOME_RECEIPT_INVALID|INCOME_RECEIPT_TOO_LARGE|INCOME_IMMUTABLE|SQLITE_CONSTRAINT|UNIQUE constraint/.test(e.message))throw new IncomeConflict();
    throw e;
   }
  }

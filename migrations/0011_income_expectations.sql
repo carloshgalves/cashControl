@@ -99,3 +99,13 @@ BEGIN SELECT RAISE(ABORT,'INCOME_IMMUTABLE'); END;
 CREATE TRIGGER income_link_no_replace BEFORE INSERT ON income_receipt_links
 WHEN EXISTS(SELECT 1 FROM income_receipt_links x WHERE x.owner_user_id=NEW.owner_user_id AND (x.creation_key=NEW.creation_key OR x.movement_id=NEW.movement_id))
 BEGIN SELECT RAISE(ABORT,'INCOME_IMMUTABLE'); END;
+
+-- Serializes safely with the original receipt-link insert. A single valid
+-- movement is capped at 9e12 cents, but a source/occurrence may accumulate
+-- many payments: reject overflow BEFORE persisting the final link.
+CREATE TRIGGER income_receipt_safe_total BEFORE INSERT ON income_receipt_links BEGIN
+ SELECT RAISE(ABORT,'INCOME_RECEIPT_TOO_LARGE') WHERE
+ (SELECT m.amount_cents FROM posted_cash_movements m WHERE m.owner_user_id=NEW.owner_user_id AND m.movement_id=NEW.movement_id)
+ > 9007199254740991-COALESCE((SELECT e.received_cents FROM income_expectation_totals e
+  WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key),0);
+END;
