@@ -180,6 +180,11 @@ async function persisted(db:FinancialDatabase,who:string,sourceId:string,occ:str
  return db.prepare('SELECT * FROM income_expectation_totals WHERE owner_user_id=? AND source_id=? AND occurrence_key=?')
   .bind(who,sourceId,occ).first<ExpectRow>();
 }
+async function currentExpectation(db:FinancialDatabase,who:string,src:Source,occ:string):Promise<Expectation>{
+ const row=await persisted(db,who,src.sourceId,occ);
+ if(!row)throw new Error('Committed income expectation not readable');
+ return makeExpectation(src,row);
+}
 async function checkOccurrence(db:FinancialDatabase,a:AuthenticatedActor,sourceId:string,occ:string){
  const s=await getSource(db,a,sourceId);
  occurrence(occ);
@@ -281,7 +286,7 @@ export async function changeExpectation(db:FinancialDatabase,a:AuthenticatedActo
      row.reason!==reason||(requestedDelay!==null&&row.expected_on!==requestedDelay))throw new IncomeConflict();
   return true;
  };
- if(await replay())return persisted(db,who,sourceId,occ);
+ if(await replay())return currentExpectation(db,who,base.s,occ);
  const current=await persisted(db,who,sourceId,occ);
  const currentOn=current?.current_on??base.originalOn;
  const next=requestedDelay??currentOn;
@@ -298,7 +303,7 @@ export async function changeExpectation(db:FinancialDatabase,a:AuthenticatedActo
    throw e;
   }
  }
- return persisted(db,who,sourceId,occ);
+ return currentExpectation(db,who,base.s,occ);
 }
 export async function linkIncomeReceipt(db:FinancialDatabase,a:AuthenticatedActor,sourceId:string,occ:string,input:{
  idempotencyKey:string;movementId:string;
@@ -314,7 +319,7 @@ export async function linkIncomeReceipt(db:FinancialDatabase,a:AuthenticatedActo
   if(row.source_id!==sourceId||row.occurrence_key!==occ||row.movement_id!==mid)throw new IncomeConflict();
   return true;
  };
- if(await replay())return persisted(db,who,sourceId,occ);
+ if(await replay())return currentExpectation(db,who,base.s,occ);
  const stored=await persisted(db,who,sourceId,occ);
  if(stored?.state==='canceled')throw new IncomeConflict();
  try{
@@ -328,7 +333,7 @@ export async function linkIncomeReceipt(db:FinancialDatabase,a:AuthenticatedActo
    throw e;
   }
  }
- return persisted(db,who,sourceId,occ);
+ return currentExpectation(db,who,base.s,occ);
 }
 export async function listAvailableIncomeMovements(db:FinancialDatabase,a:AuthenticatedActor,limit=50,offset=0){
  const who=owner(a);page(limit,offset);
