@@ -119,7 +119,7 @@ export function ScenarioPanel({intentions,refreshKey,onUnauthorized}:{
      {chosen?.state==='reserved'&&<p className="scenario-warning">A reserva existente de {money(chosen.reservedCents)}
        será substituída pela obrigação hipotética na data de compra, sem dupla contagem.</p>}
     </div>}
-    <p className="small-note">A projeção parte do **saldo bancário atual**, não reconstrói um saldo histórico da data inicial.
+    <p className="small-note">A projeção parte do saldo bancário atual, não reconstrói um saldo histórico da data inicial.
      Assume apenas para calcular que contas ainda abertas serão pagas nos vencimentos; contas atrasadas entram no primeiro dia.
      O cenário planejado inclui expectativas explícitas ainda não recebidas, sem garantir o crédito.</p>
     <button type="submit" className="primary-btn" disabled={busy}>
@@ -156,7 +156,7 @@ export function ScenarioPanel({intentions,refreshKey,onUnauthorized}:{
      projetado ou margem preventiva negativa. Este alerta não bloqueia suas decisões.</p>}
    {result.unreceivedExplicitIncomeCents>0&&
     <p className="scenario-warning">O cenário planejado adiciona {money(result.unreceivedExplicitIncomeCents)}
-     em valores explicitamente esperados, **ainda não recebidos integralmente**. Não são saldo bancário.</p>}
+     em valores explicitamente esperados, ainda não recebidos integralmente. Não são saldo bancário.</p>}
    <div className="scenario-table-wrap">
     <table className="scenario-table">
      <caption>Projeção por data · não é extrato bancário</caption>
