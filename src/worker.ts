@@ -119,6 +119,19 @@ for (const path of ['/api/timeline', '/api/alerts']) {
   });
 }
 
+
+for(const path of [
+ '/api/intentions','/api/intentions/:intentionId','/api/intentions/:intentionId/events',
+ '/api/planning-summary',
+]){
+ app.all(path,c=>{
+  const auth=createWorkerAuth(c.env);
+  return handleFinancialHttp(c.req.raw,c.env.DB as unknown as FinancialDatabase,
+   async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),
+   configuredOrigin(c.env));
+ });
+}
+
 // Private, read-only XLSX/PDF export: identical verified Better Auth boundary.
 app.all('/api/reports/export', (c) => {
   const auth = createWorkerAuth(c.env);

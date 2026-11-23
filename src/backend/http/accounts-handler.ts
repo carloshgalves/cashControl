@@ -1,3 +1,4 @@
+import {createIntention,getIntention,listIntentions,listIntentionEvents,transitionIntention,getPlanningSummary,IntentionUnavailable,IntentionConflict,PlanningTooLarge} from '../planning/intentions.ts';
 import {confirmSalaryWithholding,listSalaryWithholdings,listObligationWithholdings,WithholdingConflict,WithholdingNotFound,WithholdingNotApplicable} from '../payroll/withholdings.ts';
 import {createRevision,listRevisions,createStatement,getStatement,listStatements,SalaryConflict,SalaryNotApplicable,SalaryTooLarge} from '../payroll/payroll.ts';
 import {createSource,getSource,listSources,createManualExpectation,listCalendar,changeExpectation,linkIncomeReceipt,listAvailableIncomeMovements,listExpectationEvents,listExpectationReceipts,IncomeNotFound,IncomeConflict,IncomeTooLarge} from '../income/income.ts';
@@ -267,6 +268,68 @@ export async function handleFinancialHttp(
 
 
 
+
+
+    // F1: planning is virtual. Converting an intention atomically adds exactly
+    // one ordinary payable and removes the virtual reserve. No cash posting.
+    if(path==='/api/intentions'||path==='/api/planning-summary'||path.startsWith('/api/intentions/')){
+      const intentId=path.match(/^\/api\/intentions\/([0-9a-f-]{36})$/);
+      const intentEvents=path.match(/^\/api\/intentions\/([0-9a-f-]{36})\/events$/);
+      const paged=method==='GET'&&(path==='/api/intentions'||intentEvents!==null);
+      const allowed=paged?new Set(['limit','offset']):new Set<string>();
+      let unexpected=false;
+      requestURL.searchParams.forEach((_v,k)=>{if(!allowed.has(k)||requestURL.searchParams.getAll(k).length!==1)unexpected=true;});
+      if(unexpected)return error(400,'INVALID_FILTER');
+      const page=(name:string,def:number)=>{
+        const v=requestURL.searchParams.get(name);
+        if(v===null)return def;
+        if(!/^(?:0|[1-9]\d{0,5})$/.test(v))throw new TypeError('Invalid paging');
+        return Number(v);
+      };
+      if(method==='GET'){
+        if(path==='/api/planning-summary')return json({summary:await getPlanningSummary(database,actor)});
+        if(path==='/api/intentions')return json({intentions:await listIntentions(database,actor,page('limit',50),page('offset',0))});
+        if(intentId){
+          const v=await getIntention(database,actor,intentId[1]!);
+          return v?json({intention:v}):error(404,'NOT_FOUND');
+        }
+        if(intentEvents)return json({events:await listIntentionEvents(database,actor,intentEvents[1]!,page('limit',50),page('offset',0))});
+        return error(404,'NOT_FOUND');
+      }
+      if(path==='/api/planning-summary'||intentId)return error(405,'METHOD_NOT_ALLOWED');
+      if(path!=='/api/intentions'&&!intentEvents)return error(404,'NOT_FOUND');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,4096);
+      if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;
+      try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+      catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const v=raw as Record<string,unknown>;
+      if(typeof v.idempotencyKey!=='string')return error(400,'INVALID_BODY');
+      if(path==='/api/intentions'){
+        if(Object.keys(v).some(k=>!['idempotencyKey','title','description','amount','plannedOn'].includes(k))||
+          typeof v.title!=='string'||typeof v.amount!=='string'||typeof v.plannedOn!=='string'||
+          (v.description!==undefined&&v.description!==null&&typeof v.description!=='string'))
+          return error(400,'INVALID_BODY');
+        const intention=await createIntention(database,actor,{
+          idempotencyKey:v.idempotencyKey,title:v.title,
+          description:v.description as string|null|undefined,
+          amountCents:parseCents(v.amount),plannedOn:v.plannedOn,
+        });
+        return json({intention},201);
+      }
+      if(Object.keys(v).some(k=>!['idempotencyKey','action','reserveAmount'].includes(k))||
+         !['reserve','plan','exclude','convert'].includes(String(v.action))||
+         (v.action==='reserve'?typeof v.reserveAmount!=='string':v.reserveAmount!==undefined))
+        return error(400,'INVALID_BODY');
+      const result=await transitionIntention(database,actor,intentEvents![1]!,{
+        idempotencyKey:v.idempotencyKey,
+        action:v.action as 'reserve'|'plan'|'exclude'|'convert',
+        ...(v.action==='reserve'?{reservedCents:parseCents(v.reserveAmount as string)}:{}),
+      });
+      return json(result,201);
+    }
 
     // E4: only a separate EXPLICIT retention confirmation may reduce a debt.
     // These routes never create posted_cash_movements or bank debits.
@@ -819,6 +882,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof IntentionUnavailable)return error(404,'NOT_FOUND');
+    if(cause instanceof IntentionConflict)return error(409,'CONFLICT');
+    if(cause instanceof PlanningTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof WithholdingNotFound)return error(404,'NOT_FOUND');
     if(cause instanceof WithholdingConflict)return error(409,'CONFLICT');
     if(cause instanceof WithholdingNotApplicable)return error(409,'NOT_APPLICABLE');
