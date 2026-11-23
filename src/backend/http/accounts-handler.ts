@@ -319,14 +319,16 @@ export async function handleFinancialHttp(
         });
         return json({intention},201);
       }
-      if(Object.keys(v).some(k=>!['idempotencyKey','action','reserveAmount'].includes(k))||
+      if(Object.keys(v).some(k=>!['idempotencyKey','action','reserveAmount','dueOn'].includes(k))||
          !['reserve','plan','exclude','convert'].includes(String(v.action))||
-         (v.action==='reserve'?typeof v.reserveAmount!=='string':v.reserveAmount!==undefined))
+         (v.action==='reserve'?typeof v.reserveAmount!=='string':v.reserveAmount!==undefined)||
+         (v.action==='convert'?typeof v.dueOn!=='string':v.dueOn!==undefined))
         return error(400,'INVALID_BODY');
       const result=await transitionIntention(database,actor,intentEvents![1]!,{
         idempotencyKey:v.idempotencyKey,
         action:v.action as 'reserve'|'plan'|'exclude'|'convert',
         ...(v.action==='reserve'?{reservedCents:parseCents(v.reserveAmount as string)}:{}),
+        ...(v.action==='convert'?{dueOn:v.dueOn as string}:{}),
       });
       return json(result,201);
     }
