@@ -31,6 +31,12 @@ BEGIN
    JOIN income_expectation_totals e ON e.owner_user_id=s.owner_user_id AND e.source_id=s.source_id AND e.occurrence_key=s.occurrence_key
    WHERE s.statement_seq=NEW.statement_seq AND s.owner_user_id=NEW.owner_user_id
    AND s.gross_cents IS NOT NULL AND e.state<>'canceled'
+   -- A statement with incomplete gross/discount reconciliation is
+   -- informational only, not eligible as withholding settlement evidence.
+   AND s.gross_cents=s.net_cents+COALESCE((
+    SELECT SUM(CAST(json_extract(j.value,'$.amountCents') AS INTEGER))
+    FROM json_each(s.discounts_json) j
+   ),0)
    AND s.statement_seq=(
     SELECT MAX(s2.statement_seq) FROM salary_period_statements s2
     WHERE s2.owner_user_id=s.owner_user_id AND s2.source_id=s.source_id AND s2.occurrence_key=s.occurrence_key)

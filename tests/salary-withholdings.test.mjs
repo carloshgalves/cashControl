@@ -96,7 +96,7 @@ test('E4 R$3000 gross − INSS R$200 − consignado R$300 = R$2500 net; withheld
  assert.equal((await listObligationWithholdings(db,actorA,f.debt.obligationId)).length,1);
  assert.equal((await listSalaryWithholdings(db,actorA,f.source.sourceId,occ)).length,1);
  const timeline=await readExportTimeline(db,actorA,{...period,asOf:'2026-11-30',status:'all'});
- assert.equal(timeline.events.filter(e=>e.status==='realized').length,1);
+ assert.equal(timeline.filter(e=>e.status==='realized').length,1);
  for(const format of ['pdf','xlsx'])assert.equal((await makeReport(db,actorA,{...period,asOf:'2026-11-30',status:'all',format})).rows,1);
 }));
 test('E4 neither salary statement nor linked bank income silently pays the debt without separate confirmation',()=>using(async db=>{
@@ -224,4 +224,16 @@ test('E4 HTTP rejects unauthenticated, CSRF, owner spoof, absent confirmation, a
  assert.equal((await (await http(db,endpoint)).json()).withholdings.length,1);
  assert.equal((await (await http(db,obligationEndpoint)).json()).withholdings.length,1);
  assert.equal((await (await http(db,'/api/obligations')).json()).obligations[0].state,'paid');
+}));
+
+
+test('E4 raw SQL cannot settle an obligation from an unreconciled payslip even when the discount looks valid',()=>using(async db=>{
+ const f=await fixture(db);
+ const bad=await createStatement(db,actorA,f.source.sourceId,occ,{
+  idempotencyKey:key('unmatched-sql'),netCents:250000,grossCents:310000,
+  discounts:[{label:'INSS',amountCents:20000},{label:'Consignado',amountCents:30000}],components:[],
+ },clock);
+ const sql="INSERT INTO salary_withheld_obligation_payments(owner_user_id,payment_id,creation_key,statement_seq,discount_index,obligation_id,amount_cents,confirmed_on,created_at) VALUES(?,?,?,?,?,?,?,?,?)";
+ assert.throws(()=>db.raw.prepare(sql).run('alice',crypto.randomUUID(),key('forged-evidence'),bad.statementId,1,f.debt.obligationId,30000,'2026-11-30',clock().toISOString()),/WITHHOLDING_INVALID/);
+ assert.equal((await getObligation(db,actorA,f.debt.obligationId)).outstandingCents,30000);
 }));
