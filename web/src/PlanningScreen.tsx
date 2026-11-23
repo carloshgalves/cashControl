@@ -7,9 +7,9 @@ type State='planning'|'reserved'|'converted'|'excluded';
 type Action='reserve'|'plan'|'exclude'|'convert';
 type Intention={
  intentionId:string;title:string;description:string|null;amountCents:number;plannedOn:string;
- state:State;reservedCents:number;obligationId:string|null;conversionDueOn:string|null;createdAt:string;
+ state:State;reservedCents:number;obligationId:string|null;createdAt:string;
 };
-type Event={eventId:string;intentionId:string;action:Action;reservedCents:number;obligationId:string|null;createdAt:string};
+type Event={eventId:string;intentionId:string;action:Action;reservedCents:number;obligationId:string|null;conversionDueOn:string|null;createdAt:string};
 type Summary={
  cashBalanceCents:number;obligationsCents:number;cardInvoicesCents:number;activeReserveCents:number;
  freeMarginCents:number;activeReserveCount:number;
