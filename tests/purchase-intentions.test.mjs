@@ -52,7 +52,7 @@ const newIntent=(tag='laptop',amountCents=50000)=>({
  idempotencyKey:key('intent-'+tag),title:'Notebook',description:'Planejamento de notebook',
  amountCents,plannedOn:'2026-11-30',
 });
-const step=(action,tag,overrides={})=>({idempotencyKey:key('action-'+tag),action,...overrides});
+const step=(action,tag,overrides={})=>({idempotencyKey:key('action-'+tag),action,...(action==='convert'?{dueOn:'2026-11-30'}:{}),...overrides});
 async function intent(db,tag='laptop',amountCents=50000){return createIntention(db,u,newIntent(tag,amountCents),clock);}
 async function wallet(db,amount=120000){
  return createAccount(db,u,{idempotencyKey:key('bank'),name:'Carteira principal',
@@ -252,9 +252,27 @@ test('F1 HTTP Better Auth session, Origin, unknown JSON fields, exact decimal, A
  assert.equal((await http(db,reserve,'alice','POST',{idempotencyKey:key('http-no-action'),action:'reserve',reserveAmount:'500.00',ownerId:'bob'})).status,400);
  assert.equal((await http(db,reserve,'alice','POST',{idempotencyKey:key('http-reserve'),action:'reserve',reserveAmount:'500.00'})).status,201);
  assert.equal((await (await http(db,'/api/planning-summary')).json()).summary.activeReserveCents,50000);
- assert.equal((await http(db,reserve,'alice','POST',{idempotencyKey:key('http-convert'),action:'convert'})).status,201);
+ assert.equal((await http(db,reserve,'alice','POST',{idempotencyKey:key('http-convert'),action:'convert',dueOn:'2026-11-30'})).status,201);
  assert.equal((await (await http(db,'/api/planning-summary')).json()).summary.activeReserveCents,0);
  assert.equal((await (await http(db,'/api/intentions/'+obj.intentionId)).json()).intention.state,'converted');
  assert.equal((await (await http(db,'/api/obligations')).json()).obligations.length,1);
  assert.equal((await http(db,reserve,'bob','POST',{idempotencyKey:key('cross'),action:'plan'})).status,404);
+}));
+
+
+test('F1 intended purchase date and actual obligation due date are independent and explicitly recorded',()=>using(async db=>{
+ await wallet(db);
+ const i=await intent(db,'future-date');
+ const converted=await transitionIntention(db,u,i.intentionId,
+  step('convert','due-next-month',{dueOn:'2026-12-15'}),clock);
+ const obligation=await getObligation(db,u,converted.intention.obligationId);
+ assert.equal(i.plannedOn,'2026-11-30');
+ assert.equal(obligation.dueOn,'2026-12-15');
+ assert.equal(converted.event.conversionDueOn,'2026-12-15');
+ assert.equal((await getPlanningSummary(db,u)).obligationsCents,50000);
+ assert.equal((await getPlanningSummary(db,u)).activeReserveCents,0);
+ await assert.rejects(()=>transitionIntention(db,u,i.intentionId,step('convert','due-next-month',
+  {dueOn:'2026-11-30'}),clock),IntentionConflict);
+ await assert.rejects(()=>transitionIntention(db,u,i.intentionId,step('convert','invalid-date',
+  {dueOn:'2026-02-30'}),clock),TypeError);
 }));

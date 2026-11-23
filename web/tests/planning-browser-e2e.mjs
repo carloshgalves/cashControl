@@ -70,6 +70,7 @@ async function main(){
   await notebook.click(); // reset reserve form to original full amount
   await detail.getByRole('button',{name:'Ativar reserva preventiva'}).click();
   await notebook.getByText('Reserva ativa').waitFor();
+  assert.equal(await detail.getByLabel('Vencimento da obrigação').inputValue(),'2026-11-30');
   const agreed=detail.getByRole('checkbox',{name:/Confirmo que a compra foi concretizada/});
   const convert=detail.getByRole('button',{name:'Converter em obrigação sem duplicar reserva'});
   await agreed.check();
