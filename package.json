@@ -21,7 +21,8 @@
     "d1:e2e": "node web/tests/cards-browser-e2e.mjs",
     "d2:e2e": "node web/tests/invoice-payments-browser-e2e.mjs",
     "d3:e2e": "node web/tests/reconciliation-browser-e2e.mjs",
-    "e1:e2e": "node web/tests/works-browser-e2e.mjs"
+    "e1:e2e": "node web/tests/works-browser-e2e.mjs",
+    "e2:e2e": "node web/tests/income-browser-e2e.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9.3",
