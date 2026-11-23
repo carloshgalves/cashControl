@@ -73,10 +73,6 @@ async function main(){
   const agreed=detail.getByRole('checkbox',{name:/Confirmo que a compra foi concretizada/});
   const convert=detail.getByRole('button',{name:'Converter em obrigação sem duplicar reserva'});
   await agreed.check();
-  console.log('F1_CHECK_DIAG',JSON.stringify({checked:await agreed.isChecked(),enabled:await convert.isEnabled(),
-    ready:await convert.getAttribute('data-ready'),isLoading:await convert.getAttribute('data-loading'),
-    busy:await convert.getAttribute('data-busy'),confirmed:await convert.getAttribute('data-confirmed'),
-    alerts:await screen.getByRole('alert').allTextContents(),loading:await screen.getByRole('status').allTextContents()}));
   await convert.click();
   await detail.getByText('Compra concretizada: a reserva virtual foi substituída').waitFor();
   summary=(await (await page.request.get(APP+'/api/planning-summary')).json()).summary;
