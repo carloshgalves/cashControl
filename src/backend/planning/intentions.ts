@@ -190,7 +190,8 @@ export async function getPlanningSummary(db:FinancialDatabase,actor:Authenticate
  if(!row)throw new Error('Planning totals missing');
  const c=safe(BigInt(row.cash_cents)),o=safe(BigInt(row.obligation_cents)),
   card=safe(BigInt(row.card_cents)),reserve=safe(BigInt(row.reserve_cents));
- for(const x of [c,o,card,reserve])if(x<0||!Number.isSafeInteger(x))throw new PlanningTooLarge();
+ for(const x of [o,card,reserve])if(x<0||!Number.isSafeInteger(x))throw new PlanningTooLarge();
+ if(!Number.isSafeInteger(c))throw new PlanningTooLarge(); // negative real cash is valid
  if(!Number.isSafeInteger(row.reserve_count)||row.reserve_count<0)throw new PlanningTooLarge();
  return {
   basis:'current_cash_minus_current_commitments_and_active_reserves',
