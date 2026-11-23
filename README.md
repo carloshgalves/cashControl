@@ -122,7 +122,7 @@ Validação: `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, `npm t
 
 ## Composição salarial e reajustes — E3 / SPEC-005 (Issue #24)
 
-**Implementada na branch `feat/e3-payroll-breakdowns-revisions` e mantida em PR Draft**, sem merge/deploy. A E3 amplia a tela **Rendas → fonte de renda → competência** sem alterar os lançamentos reais de caixa.
+**A PR #46 (E3) foi integrada em `main`.** A E3 amplia a tela **Rendas → fonte de renda → competência** sem alterar os lançamentos reais de caixa.
 
 - **Salário líquido** obrigatório no demonstrativo da competência; **salário bruto opcional no mesmo formulário**, sem checkbox ou etapa adicional. Se bruto estiver vazio, é ignorado e nenhum desconto é inventado.
 - Com bruto informado, o usuário pode discriminar **INSS, IRRF, consignado, plano de saúde e outras retenções** com valor e rótulo; a conferência é exata em centavos: `bruto − descontos discriminados − líquido informado`. Uma diferença não zero gera **conciliação pendente** e não autoriza ajuste automático. A igualdade é exclusivamente aritmética, não comprovação bancária ou tributária.
@@ -136,3 +136,20 @@ API privada: `GET/POST /api/income-sources/:sourceId/salary-revisions`; `GET/POS
 Validação local: `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, `npm test`, `npm run ui:test`, `npm run e3:e2e`, migrações 0001–0012 em D1 descartável e Chromium/Better Auth real com Alice/Bob. [Parecer adversarial E3](docs/implementation/PAYROLL-E3-REVIEW.md).
 
 **Fora do escopo:** cálculo automático de INSS/IRRF e regras trabalhistas, emissão de holerite, confirmação bancária de salários, pagamento de consignado em folha (E4), anexos de documentos, encerramento/suspensão de fonte, reajuste retroativo antes da última versão, rateio de um recebimento em múltiplas competências e deploy remoto.
+
+
+## Desconto em folha confirmado e obrigação paga — E4 / SPEC-005 (Issue #25)
+
+A branch `feat/e4-payroll-withheld-obligations` entrega **quitação parcial/total de obrigação por desconto efetivamente retido em folha**, com origem explícita `salary_withholding_confirmed`. É uma forma de **pagamento não bancário**: o salário líquido depositado continua sendo a única receita de conta, e a retenção **não gera segundo débito bancário**, movimentação de caixa, tarifa, lançamento de dívida ou reembolso.
+
+Fluxo: **Rendas → selecionar competência da fonte → informar bruto, líquido e descontos E3 → conferir `bruto − descontos = líquido` → confirmar separadamente a retenção ocorrida → selecionar a obrigação, desconto, valor retido e data de retenção → marcar confirmação expressa → baixar obrigação**. O demonstrativo isolado, sem confirmação adicional, jamais altera o saldo devido. Uma conciliação gross/líquido pendente ou bruto ausente não habilita quitação. A confirmação pode ser parcial e utilizar somente o valor remanescente daquele desconto, respeitando também o saldo ainda devido.
+
+Ex.: salário **bruto R$ 3.000**, retenções INSS R$ 200 + consignado R$ 300, **líquido R$ 2.500**. Se R$ 2.500 foram realmente depositados, essa é a **única entrada no banco**. Só quando se confirma o consignado R$ 300, a obrigação muda de R$ 300 em aberto para R$ 0 — **sem uma saída adicional de R$ 300 do saldo bancário**. O registro conserva identificador da versão de demonstrativo, índice e rótulo do desconto, obrigação, valor, data e trilha append-only.
+
+Banco: migração `0013_salary_withholding_obligations.sql`; tabela `salary_withheld_obligation_payments`, guardas por titular, versão corrente, desconto discriminado e aritmeticamente conciliado, limite de desconto e saldo da dívida, idempotência e proteção contra `INSERT OR REPLACE`, UPDATE/DELETE. A visão `financial_obligation_balances` agrega dinheiro pago efetivamente pelo caixa **líquido de reembolsos** mais o pagamento não bancário confirmado em folha. A guarda de cancelamento impede cancelar dívida já liquidada parcialmente por qualquer das duas vias. Uma vez confirmada retenção, o demonstrativo fica **congelado**; retificação exige procedimento separado e auditável.
+
+API autenticada: `GET/POST /api/income-sources/:sourceId/expectations/:occurrenceKey/salary/withholdings` e `GET /api/obligations/:obligationId/withholdings`; o fluxo bancário anterior `GET /api/obligations/:id/payments` continua listando **apenas pagamentos de caixa**, não duplicando baixas não bancárias. A interface apresenta histórico por competência, e as obrigações mostram saldos corrigidos em dashboard, agenda e relatórios; após confirmação, o panorama é atualizado sem exigir recarregamento manual. `GET` usa paginação, Better Auth e isolamento entre titulares. Os POSTs exigem Origin válido, JSON permitido, confirmação humana explícita, decimal em centavos e idempotência.
+
+Validação: `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, `npm test`, `npm run ui:test`, `npm run e4:e2e`, migrações 0001–0013 com D1 local descartável, Chromium real e duas sessões Better Auth. [Parecer E4](docs/implementation/PAYROLL-WITHHOLDING-E4-REVIEW.md).
+
+**Fora de escopo:** retenção automática por simples digitação de holerite, cálculo tributário de INSS/IRRF, integração com folha/empregador, anexos comprobatórios, correção/estorno posterior de baixa por retenção, quitação de várias competências por uma única verba, e deploy remoto. O comprovante de retenção é declaração explícita do usuário; **não** é verificação automática externa. Registrar desconto na folha não significa que uma dívida esteja juridicamente extinta sem a confirmação real de pagamento.
