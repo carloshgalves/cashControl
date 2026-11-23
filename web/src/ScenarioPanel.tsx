@@ -151,9 +151,9 @@ export function ScenarioPanel({intentions,refreshKey,onUnauthorized}:{
       {money(result.planned.lowestCashCents)}</p>
     </article>
    </div>
-   {(result.conservative.lowestCashCents<0||result.conservative.lowestMarginCents<0)&&
+   {(result.conservative.lowestCashCents<=0||result.conservative.lowestMarginCents<=0)&&
     <p role="status" className="scenario-warning">Risco no cenário conservador: ao menos uma data apresenta caixa
-     projetado ou margem preventiva negativa. Este alerta não bloqueia suas decisões.</p>}
+     projetado ou margem preventiva zerada ou negativa. Este alerta não bloqueia suas decisões.</p>}
    {result.unreceivedExplicitIncomeCents>0&&
     <p className="scenario-warning">O cenário planejado adiciona {money(result.unreceivedExplicitIncomeCents)}
      em valores explicitamente esperados, ainda não recebidos integralmente. Não são saldo bancário.</p>}

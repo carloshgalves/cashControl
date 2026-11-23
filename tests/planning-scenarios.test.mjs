@@ -8,6 +8,7 @@ import {createSource,createManualExpectation,changeExpectation,linkIncomeReceipt
 import {createAccount} from '../src/backend/accounts/accounts.ts';
 import {createObligation,getObligation,payObligation} from '../src/backend/obligations/obligations.ts';
 import {createCard,createPurchase} from '../src/backend/cards/cards.ts';
+import {payInvoice} from '../src/backend/cards/invoice-payments.ts';
 import {postMovement} from '../src/backend/movements/movements.ts';
 import {getDashboard} from '../src/backend/dashboard/dashboard.ts';
 import {readExportTimeline} from '../src/backend/timeline/timeline.ts';
@@ -356,4 +357,31 @@ test('F2 unlinked real income warns of potential duplicate expectation, but matc
   simulated.planned.endingCashCents],[0,20000,30000]);
  assert.equal(simulated.notes.some(x=>x.includes('could overstate')),false);
  assert.equal((await getDashboard(db,A,{from,to})).cashFlow.incomeCents,10000);
+}));
+
+
+test('F2 partially PAID card invoice is deducted only for its CURRENT outstanding, not gross or paid portion again',()=>using(async db=>{
+ const a=await wallet(db,A,120000);
+ const card=await createCard(db,A,{idempotencyKey:key('partial-card'),name:'Cartão mensal',
+  limitCents:100000,closingDay:20,dueDay:25},clock);
+ await createPurchase(db,A,{idempotencyKey:key('partial-purchase'),cardId:card.cardId,
+  title:'Curso',totalCents:60000,purchasedOn:'2026-11-11',installments:1},clock);
+ await payInvoice(db,A,{idempotencyKey:key('partial-invoice'),cardId:card.cardId,cycle:'2026-11',
+  accountId:a.accountId,amountCents:20000,method:'pix',paidOn:'2026-11-11'},clock);
+ const r=await simulatePlanning(db,A,input());
+ assert.deepEqual([r.openingRealCashCents,r.existingOutstandingCardInvoicesCents,
+  at(r,'2026-11-25').outstandingPaymentsCents,r.conservative.endingCashCents,
+  r.conservative.endingFreeMarginCents],[100000,40000,40000,60000,60000]);
+ assert.equal((await getDashboard(db,A,{from,to})).cashFlow.expensesCents,20000);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM card_invoice_payments').get().n,1);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,1);
+}));
+
+test('F2 zero remaining margin is an exhausted capacity, not a fictitious negative debt',()=>using(async db=>{
+ await wallet(db,A,50000);
+ await debt(db,A,50000,'2026-11-20');
+ const r=await simulatePlanning(db,A,input());
+ assert.deepEqual([r.conservative.lowestMarginCents,r.conservative.endingFreeMarginCents,
+  r.conservative.endingCashCents],[0,0,0]);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,0);
 }));
