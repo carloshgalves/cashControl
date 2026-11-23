@@ -1,0 +1,68 @@
+name: e3-payroll-breakdowns-local-review
+on:
+  push:
+    branches: [feat/e3-payroll-breakdowns-revisions]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: e3-payroll-breakdowns-local
+  cancel-in-progress: true
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck, builds and deterministic regressions
+        run: |
+          npm run typecheck
+          npm run ui:check
+          npm run ui:build
+          npm test
+          npm run ui:test
+          node --check web/tests/cards-browser-e2e.mjs
+          node --check web/tests/invoice-payments-browser-e2e.mjs
+          node --check web/tests/reconciliation-browser-e2e.mjs
+          node --check web/tests/income-browser-e2e.mjs
+          node --check web/tests/payroll-browser-e2e.mjs
+      - name: Prepare Chromium
+        run: npx playwright install --only-shell chromium
+      - name: Configure disposable local D1
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+      - name: Apply all migrations including E3 0012
+        run: npx wrangler d1 migrations apply DB --local --config wrangler.toml
+      - name: Run disposable Worker and production UI
+        shell: bash
+        run: |
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml > /tmp/d1-worker.log 2>&1 &
+          echo $! > /tmp/d1-worker.pid
+          npm run ui:preview > /tmp/d1-web.log 2>&1 &
+          echo $! > /tmp/d1-web.pid
+      - name: Real Chromium E3 payroll and A/B isolation
+        # D1 contracts are covered by deterministic backend suites; avoid
+        # multiple Better Auth sign-ups from one IP hitting registration rate limits.
+        run: npm run e3:e2e
+      - name: Dispose local processes and secrets
+        if: always()
+        shell: bash
+        run: |
+          for pid in /tmp/d1-worker.pid /tmp/d1-web.pid; do
+            if [ -f "$pid" ]; then kill "$(cat "$pid")" 2>/dev/null || true; fi
+          done
+          rm -f .dev.vars
+      - name: No remote deployment
+        if: always()
+        run: echo 'NO_DEPLOY NO_REMOTE_D1 NO_REAL_USER_DATA'
