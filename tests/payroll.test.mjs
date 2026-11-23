@@ -111,7 +111,7 @@ test('E3 itemized INSS/IRRF/consignado matched arithmetically, never posts withh
   components:[{kind:'bonus',reason:'Bônus por projeto',amountCents:15000},{kind:'reduction',reason:'Desconto pontual',amountCents:-15000}],
  },clock);
  assert.deepEqual([st.grossStatus,st.grossDifferenceCents,st.discountsTotalCents,st.componentsTotalCents,st.componentsDifferenceCents],['matched',0,70000,0,0]);
- assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM obligation_payments').get().n,0);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM financial_obligation_payments').get().n,0);
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,0);
  assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.expensesCents,0);
 }));
