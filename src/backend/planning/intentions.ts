@@ -136,7 +136,7 @@ export async function transitionIntention(db:FinancialDatabase,actor:Authenticat
  const reserved=action==='reserve'?amount(input.reservedCents!):0;
  if(action!=='reserve'&&input.reservedCents!==undefined)throw new TypeError('Unexpected reserve');
  if(action!=='convert'&&input.dueOn!==undefined)throw new TypeError('Unexpected due date');
- const conversionDueOn=action==='convert'?input.dueOn:null;
+ const conversionDueOn:string|null=action==='convert'?input.dueOn??null:null;
  if(action==='convert')validateDate(conversionDueOn);
  const replay=async()=>{
   const row=await getEventByKey(db,owner,k);
