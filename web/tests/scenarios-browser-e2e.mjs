@@ -86,7 +86,7 @@ async function main(){
   await post('/api/income-sources/'+source.sourceId+'/expectations/'+occ+'/events',{
    idempotencyKey:'f2-cancel-'+randomUUID(),state:'canceled',reason:'Serviço cancelado'});
   await form.getByRole('button',{name:'Simular sem gravar compra ou pagamento'}).click();
-  await results.getByText('Nenhuma expectativa explicitamente cadastrada neste período.').first().waitFor({state:'hidden'}).catch(()=>{});
+  await results.getByText('Expectativas não recebidas incluídas (0)').waitFor();
   const canceled=(await (await page.request.post(APP+'/api/planning/simulate',{data:{
    from:'2026-11-11',to:'2026-12-31'}})).json()).simulation;
   assert.deepEqual([canceled.unreceivedExplicitIncomeCents,canceled.planned.endingFreeMarginCents],[0,40000]);
