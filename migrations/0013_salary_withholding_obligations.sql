@@ -24,6 +24,8 @@ CREATE INDEX salary_withheld_by_obligation ON salary_withheld_obligation_payment
 CREATE TRIGGER salary_withheld_guard BEFORE INSERT ON salary_withheld_obligation_payments
 BEGIN
  SELECT RAISE(ABORT,'WITHHOLDING_INVALID') WHERE
+  -- Prevent REPLACE from deleting/reinserting history when recursive_triggers
+  -- are OFF, even when the remaining discount would fit a smaller rewrite.
   EXISTS(SELECT 1 FROM salary_withheld_obligation_payments p WHERE p.owner_user_id=NEW.owner_user_id
    AND (p.payment_id=NEW.payment_id OR p.creation_key=NEW.creation_key))
   OR NOT EXISTS(

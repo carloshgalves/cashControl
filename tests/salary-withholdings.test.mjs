@@ -237,3 +237,14 @@ test('E4 raw SQL cannot settle an obligation from an unreconciled payslip even w
  assert.throws(()=>db.raw.prepare(sql).run('alice',crypto.randomUUID(),key('forged-evidence'),bad.statementId,1,f.debt.obligationId,30000,'2026-11-30',clock().toISOString()),/WITHHOLDING_INVALID/);
  assert.equal((await getObligation(db,actorA,f.debt.obligationId)).outstandingCents,30000);
 }));
+
+
+test('E4 INSERT OR REPLACE cannot rewrite even a partially used discount slot with recursive triggers OFF',()=>using(async db=>{
+ const f=await fixture(db),s=await paycheck(db,f);
+ const paid=await confirmSalaryWithholding(db,actorA,f.source.sourceId,occ,pay(s,f.debt,9000,'partial-record'),clock);
+ db.raw.exec('PRAGMA recursive_triggers=OFF');
+ const replace='INSERT OR REPLACE INTO salary_withheld_obligation_payments(owner_user_id,payment_id,creation_key,statement_seq,discount_index,obligation_id,amount_cents,confirmed_on,created_at) VALUES(?,?,?,?,?,?,?,?,?)';
+ assert.throws(()=>db.raw.prepare(replace).run('alice',paid.paymentId,key('rewrite-partial'),s.statementId,1,f.debt.obligationId,8000,'2026-11-30',clock().toISOString()),/WITHHOLDING_INVALID/);
+ assert.equal((await getObligation(db,actorA,f.debt.obligationId)).paidCents,9000);
+ assert.equal((await listSalaryWithholdings(db,actorA,f.source.sourceId,occ)).length,1);
+}));

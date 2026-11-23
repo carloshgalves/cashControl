@@ -95,6 +95,8 @@ async function main(){
   const history=(await (await page.request.get(APP+'/api/obligations/'+debt.obligationId+'/withholdings')).json()).withholdings;
   assert.equal(history.length,1);
   assert.equal(history[0].discountLabel,'Consignado');
+  await page.getByRole('button',{name:'Panorama'}).first().click();
+  await page.getByText('Nenhum vencimento pendente neste mês.').waitFor();
   console.log('E4_WITHHOLDING_UI_PASS: explicit payroll confirmation settles R$300 from R$3000 gross / R$2500 net; no second bank expense');
   await page.setViewportSize({width:390,height:844});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2),false);
