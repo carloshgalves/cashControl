@@ -13,6 +13,13 @@ CREATE TABLE purchase_intentions (
  PRIMARY KEY(owner_user_id,intention_id),
  UNIQUE(owner_user_id,creation_key)
 );
+-- An INSERT OR REPLACE cannot mutate historical values even when SQLite
+-- recursive delete triggers are disabled.
+CREATE TRIGGER intention_creation_guard BEFORE INSERT ON purchase_intentions BEGIN
+ SELECT RAISE(ABORT,'INTENTION_IMMUTABLE') WHERE
+ EXISTS(SELECT 1 FROM purchase_intentions i WHERE i.owner_user_id=NEW.owner_user_id
+   AND (i.intention_id=NEW.intention_id OR i.creation_key=NEW.creation_key));
+END;
 CREATE INDEX purchase_intentions_date ON purchase_intentions(owner_user_id,planned_on,intention_id);
 CREATE TABLE purchase_intention_events (
  event_seq INTEGER PRIMARY KEY AUTOINCREMENT CHECK(event_seq>0),
@@ -37,12 +44,21 @@ CREATE INDEX intention_events_by_intention ON purchase_intention_events(owner_us
 CREATE TRIGGER intention_event_invariants BEFORE INSERT ON purchase_intention_events BEGIN
  SELECT RAISE(ABORT,'INTENTION_EVENT_INVALID') WHERE
   NEW.event_seq<>-1
+  OR EXISTS(SELECT 1 FROM purchase_intention_events e WHERE e.owner_user_id=NEW.owner_user_id
+    AND (e.event_id=NEW.event_id OR e.creation_key=NEW.creation_key))
   OR NOT EXISTS(SELECT 1 FROM purchase_intentions i
     WHERE i.owner_user_id=NEW.owner_user_id AND i.intention_id=NEW.intention_id
       AND (NEW.action<>'reserve' OR NEW.reserved_cents<=i.amount_cents))
   OR EXISTS(SELECT 1 FROM purchase_intention_events e
     WHERE e.owner_user_id=NEW.owner_user_id AND e.intention_id=NEW.intention_id
       AND e.action IN ('convert','exclude'))
+  OR (NEW.action='reserve' AND EXISTS(
+    SELECT 1 FROM purchase_intention_events e WHERE e.owner_user_id=NEW.owner_user_id
+     AND e.intention_id=NEW.intention_id AND e.action='reserve'
+     AND e.reserved_cents=NEW.reserved_cents AND e.event_seq=(
+      SELECT MAX(e2.event_seq) FROM purchase_intention_events e2
+      WHERE e2.owner_user_id=NEW.owner_user_id AND e2.intention_id=NEW.intention_id
+     )))
   OR (NEW.action='plan' AND COALESCE((SELECT e.action FROM purchase_intention_events e
     WHERE e.owner_user_id=NEW.owner_user_id AND e.intention_id=NEW.intention_id
     ORDER BY e.event_seq DESC LIMIT 1),'plan')<>'reserve')
