@@ -14,13 +14,13 @@ export interface IntentionView{
 }
 export interface IntentionEvent{
  eventId:string;intentionId:string;action:IntentionAction;reservedCents:number;
- obligationId:string|null;createdAt:string;
+ obligationId:string|null;conversionDueOn:string|null;createdAt:string;
 }
 export interface IntentionInput{
  idempotencyKey:string;title:string;description?:string|null;amountCents:number;plannedOn:string;
 }
 export interface TransitionInput{
- idempotencyKey:string;action:IntentionAction;reservedCents?:number;
+ idempotencyKey:string;action:IntentionAction;reservedCents?:number;dueOn?:string;
 }
 export interface PlanningSummary{
  basis:'current_cash_minus_current_commitments_and_active_reserves';
@@ -64,7 +64,7 @@ interface IntentionRow{
 }
 interface EventRow{
  event_id:string;intention_id:string;creation_key:string;action:IntentionAction;
- reserved_cents:number;obligation_id:string|null;created_at:string;
+ reserved_cents:number;obligation_id:string|null;conversion_due_on:string|null;created_at:string;
 }
 const intent=(v:IntentionRow):IntentionView=>({
  intentionId:v.intention_id,title:v.title,description:v.description,
@@ -73,7 +73,7 @@ const intent=(v:IntentionRow):IntentionView=>({
 });
 const event=(v:EventRow):IntentionEvent=>({
  eventId:v.event_id,intentionId:v.intention_id,action:v.action,
- reservedCents:v.reserved_cents,obligationId:v.obligation_id,createdAt:v.created_at,
+ reservedCents:v.reserved_cents,obligationId:v.obligation_id,conversionDueOn:v.conversion_due_on,createdAt:v.created_at,
 });
 export async function getIntention(db:FinancialDatabase,actor:AuthenticatedActor,intentionId:string){
  uuid(intentionId);
@@ -135,10 +135,13 @@ export async function transitionIntention(db:FinancialDatabase,actor:Authenticat
  const k=key(input.idempotencyKey),action=input.action;
  const reserved=action==='reserve'?amount(input.reservedCents!):0;
  if(action!=='reserve'&&input.reservedCents!==undefined)throw new TypeError('Unexpected reserve');
+ if(action!=='convert'&&input.dueOn!==undefined)throw new TypeError('Unexpected due date');
+ const conversionDueOn=action==='convert'?input.dueOn:null;
+ if(action==='convert')validateDate(conversionDueOn);
  const replay=async()=>{
   const row=await getEventByKey(db,owner,k);
   if(!row)return null;
-  if(row.intention_id!==id||row.action!==action||row.reserved_cents!==reserved)throw new IntentionConflict();
+  if(row.intention_id!==id||row.action!==action||row.reserved_cents!==reserved||row.conversion_due_on!==conversionDueOn)throw new IntentionConflict();
   const current=await getIntention(db,actor,id);
   if(!current)throw new IntentionUnavailable();
   return {intention:current,event:event(row)};
@@ -151,15 +154,15 @@ export async function transitionIntention(db:FinancialDatabase,actor:Authenticat
   throw new IntentionConflict();
  const now=clock().toISOString(),eventId=crypto.randomUUID();
  const obligationId=action==='convert'?crypto.randomUUID():null;
- const write=db.prepare('INSERT INTO purchase_intention_events(owner_user_id,event_id,creation_key,intention_id,action,reserved_cents,obligation_id,created_at) VALUES(?,?,?,?,?,?,?,?)')
-  .bind(owner,eventId,k,id,action,reserved,obligationId,now);
+ const write=db.prepare('INSERT INTO purchase_intention_events(owner_user_id,event_id,creation_key,intention_id,action,reserved_cents,obligation_id,conversion_due_on,created_at) VALUES(?,?,?,?,?,?,?,?,?)')
+  .bind(owner,eventId,k,id,action,reserved,obligationId,conversionDueOn,now);
  try{
   if(action==='convert'){
    // This insert and the event are ONE atomic D1 batch. Event SQL ensures
-   // conversion references the intended amount/date/title and a free state.
+   // conversion references the intended amount/title and explicit due date.
    await db.batch([
     db.prepare('INSERT INTO financial_obligations(owner_user_id,obligation_id,creation_key,title,category,total_cents,due_on,created_at) VALUES(?,?,?, ?,NULL,?,?,?)')
-     .bind(owner,obligationId,'intention-conversion:'+k,current.title,current.amountCents,current.plannedOn,now),
+     .bind(owner,obligationId,'intention-conversion:'+k,current.title,current.amountCents,conversionDueOn,now),
     write,
    ]);
   }else await write.run();
