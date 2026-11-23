@@ -95,7 +95,9 @@ function generate(s:Source,from:string,to:string):string[]{
  if(s.periodicity==='monthly'){
   const start=jsDate(from),a=jsDate(anchor);
   let n=Math.max(0,(start.getUTCFullYear()-a.getUTCFullYear())*12+start.getUTCMonth()-a.getUTCMonth()-1);
-  for(;;n++){
+  const final=jsDate(end);
+  const lastIndex=(final.getUTCFullYear()-a.getUTCFullYear())*12+final.getUTCMonth()-a.getUTCMonth();
+  for(;n<=lastIndex;n++){
    const next=monthDate(anchor,n);
    if(next>end)break;
    if(next>=from)out.push(next);

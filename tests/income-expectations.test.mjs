@@ -289,3 +289,14 @@ test('E2 over-receipt stays visibly above expectation; cancellation never implie
  assert.deepEqual([e.state,e.receivedCents,e.differenceCents],['canceled',7000,2000]);
  assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.incomeCents,7000);
 }));
+
+
+test('E2 final Gregorian year 9999 is a valid calendar bound, not a false size error',()=>using(async db=>{
+ const s=await createSource(db,actor('alice'),{...monthly('end-of-year'),
+  anchorOn:'9999-12-31'},clock);
+ const cal=await listCalendar(db,actor('alice'),'9999-12-01','9999-12-31');
+ assert.equal(cal.expectations.length,1);
+ assert.equal(cal.expectations[0].sourceId,s.sourceId);
+ assert.equal(cal.expectations[0].originalOn,'9999-12-31');
+ assert.equal(cal.totals.expectedCents,300000);
+}));
