@@ -5,6 +5,7 @@ import { AlertPreview, TimelineScreen } from './Trail.tsx';
 import { ReportDialog } from './ReportDialog.tsx';
 import { CardScreen } from './CardScreen.tsx';
 import { WorkScreen } from './WorkScreen.tsx';
+import { IncomeScreen } from './IncomeScreen.tsx';
 import type { TrailFilter } from './trail.ts';
 import type { Account, Obligation, Movement, Session, Dashboard } from './api.ts';
 import {
@@ -13,17 +14,17 @@ import {
   friendlyDate,
 } from './finance.ts';
 
-type View = 'overview' | 'movement' | 'trail' | 'calendar' | 'accounts' | 'cards' | 'works';
+type View = 'overview' | 'movement' | 'trail' | 'calendar' | 'accounts' | 'cards' | 'works' | 'income';
 type EntryMode = 'income' | 'expense' | 'transfer' | 'pay' | 'account';
 type Data = Awaited<ReturnType<typeof snapshot>>;
 const names: Record<View, string> = {
-  overview: 'Panorama', movement: 'Movimentos', trail: 'Trilha financeira', calendar: 'Agenda', accounts: 'Minhas contas', cards: 'Cartões', works: 'Trabalhos',
+  overview: 'Panorama', movement: 'Movimentos', trail: 'Trilha financeira', calendar: 'Agenda', accounts: 'Minhas contas', cards: 'Cartões', works: 'Trabalhos', income: 'Rendas',
 };
 const controls: { value: View; icon: string; short: string }[] = [
   { value: 'overview', icon: '◫', short: 'Início' }, { value: 'movement', icon: '↗', short: 'Fluxo' },
   { value: 'trail', icon: '◉', short: 'Trilha' },
   { value: 'calendar', icon: '▦', short: 'Agenda' }, { value: 'accounts', icon: '◩', short: 'Contas' },
-  { value: 'cards', icon: '▤', short: 'Cartões' }, { value: 'works', icon: '▣', short: 'Trabalhos' },
+  { value: 'cards', icon: '▤', short: 'Cartões' }, { value: 'works', icon: '▣', short: 'Trabalhos' }, { value: 'income', icon: '◈', short: 'Rendas' },
 ];
 const methodNames: Record<string, string> = { pix: 'Pix', cash: 'Espécie', debit: 'Débito', bank_transfer: 'Transferência externa' };
 function Icon({ children }: { children: ReactNode }) {
@@ -420,12 +421,12 @@ export function App() {
           view==='overview' ? 'Seu dinheiro tem um ritmo.' :
             view==='movement' ? 'A história do seu dinheiro.' :
             view==='trail' ? 'Sua trilha financeira.' :
-            view==='calendar' ? 'O que vem pela frente.' : view==='cards' ? 'Seu crédito sem confusões.' : view==='works' ? 'Seu trabalho, seus resultados.' : 'Onde está seu dinheiro.'
+            view==='calendar' ? 'O que vem pela frente.' : view==='cards' ? 'Seu crédito sem confusões.' : view==='works' ? 'Seu trabalho, seus resultados.' : view==='income' ? 'Sua renda, real e prevista.' : 'Onde está seu dinheiro.'
         }</h1><p>{view==='overview' ? 'O que mudou, o que vem e onde você pode agir.' :
           view==='movement' ? 'Entradas, saídas, reembolsos e transferências sem dupla contagem.' :
           view==='trail' ? 'Eventos reais, compromissos futuros e vencimentos para explorar.' :
           view==='calendar' ? 'Compromissos futuros, sem confundir vencimento com pagamento.' :
-          view==='cards' ? 'Compras parceladas e faturas, sem débito bancário antes do pagamento.' : view==='works' ? 'Serviços, recebimentos e custos sem duplicar seu caixa.' :
+          view==='cards' ? 'Compras parceladas e faturas, sem débito bancário antes do pagamento.' : view==='works' ? 'Serviços, recebimentos e custos sem duplicar seu caixa.' : view==='income' ? 'Expectativas explícitas, sem saldo inventado.' :
           'O dinheiro muda de lugar sem virar uma nova receita.'}</p></div>
         <div className="period-control" aria-label="Mês de referência">
           <button onClick={()=>changeMonth(-1)} aria-label="Mês anterior">‹</button>
@@ -437,6 +438,8 @@ export function App() {
       {loading && <div className="loading-panel" role="status">Atualizando valores e compromissos…</div>}
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
+      {view==='income' && <IncomeScreen key={session.user.id} month={month} refreshKey={refreshKey}
+        onUnauthorized={invalidateSession} onRecordIncome={()=>setModal({mode:accounts.length?'income':'account'})}/>}
       {view==='works' && <WorkScreen key={session.user.id} refreshKey={refreshKey} canRegisterMovement={!!data&&!loading&&!error}
         onUnauthorized={invalidateSession} onNewMovement={direction=>setModal({mode:accounts.length?direction:'account'})}/>}
       {data && !loading && !error && <>
