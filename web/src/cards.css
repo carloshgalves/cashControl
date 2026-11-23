@@ -49,3 +49,5 @@
 .credit-reconcile-pending{font-size:12px;line-height:1.6;padding:13px;background:#fff6e8;border:1px solid #ead3ae;border-radius:9px;color:#795624}
 .credit-reconcile-history{display:grid;gap:4px;max-height:450px;overflow:auto}
 @media(max-width:680px){.credit-reconcile-values{grid-template-columns:1fr}.credit-reconcile .credit-toolbar{align-items:start}}
+
+.income-screen .credit-item b,.income-screen .credit-installment b{white-space:normal;overflow-wrap:anywhere;text-align:right}.income-screen .credit-item{width:100%;cursor:pointer}.income-screen .credit-panel h3,.income-screen .credit-panel p{overflow-wrap:anywhere}.income-screen .credit-reconcile-values{margin:4px 0}.income-screen .credit-form textarea{width:100%}
