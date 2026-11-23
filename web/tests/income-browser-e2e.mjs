@@ -92,10 +92,17 @@ async function main(){
   const movement=(await make('/api/movements',{idempotencyKey:'e2-cash-'+randomUUID(),
    accountId:account.accountId,direction:'income',amount:'50.00',method:'pix',
    description:'Freelancer recebido',occurredOn:'2026-11-11'})).movement;
-  // The UI refreshes available movements on a new month/source state request;
-  // verify the backend association from the same authenticated user.
-  await make('/api/income-sources/'+free.sourceId+'/expectations/'+event.occurrenceKey+'/receipts',{
-   idempotencyKey:'e2-link-'+randomUUID(),movementId:movement.movementId});
+  // Exercise the actual React association workflow. The parent snapshot is
+  // refreshed by navigating away/back; the newly posted money is now eligible.
+  await page.getByRole('button',{name:'Panorama'}).first().click();
+  await page.getByRole('button',{name:'Rendas'}).first().click();
+  const current=page.getByRole('region',{name:'Fontes e expectativas de renda'});
+  await current.getByRole('region',{name:'Calendário de expectativas'}).getByRole('button',{name:/Freelancer E2/}).click();
+  const linkedDetail=current.getByRole('region',{name:'Detalhe da expectativa'});
+  const linkForm=linkedDetail.getByRole('form',{name:'Vincular receita real'});
+  await linkForm.getByLabel('Entrada não vinculada').selectOption(movement.movementId);
+  await linkForm.getByRole('button',{name:'Vincular sem duplicar entrada'}).click();
+  await linkedDetail.getByText('Freelancer recebido').first().waitFor();
   cal=(await (await page.request.get(range)).json()).calendar;
   const linked=cal.expectations.find(e=>e.sourceId===free.sourceId);
   assert.deepEqual([linked.receivedCents,linked.remainingCents],[5000,13000]);
