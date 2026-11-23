@@ -45,6 +45,7 @@ export interface ScenarioReport{
   intentionId:string|null;replacedExistingReserveCents:number}|null;
  unreceivedExplicitIncomeCents:number;
  unreceivedSources:ProjectedIncome[];
+ unlinkedRealIncomeCount:number;
  conservative:{basis:'current_cash_and_known_outstanding_only';endingCashCents:number;endingFreeMarginCents:number;lowestCashCents:number;lowestMarginCents:number};
  planned:{basis:'explicit_unreceived_expectations_not_guaranteed';endingCashCents:number;endingFreeMarginCents:number;lowestCashCents:number;lowestMarginCents:number};
  points:ScenarioPoint[];
@@ -52,6 +53,7 @@ export interface ScenarioReport{
 }
 interface DueRow{due_on:string;outstanding_cents:number}
 interface ReserveRow{intention_id:string;reserved_cents:number}
+interface CountRow{n:number}
 const MS_DAY=86400000;
 const owner=(a:AuthenticatedActor)=>{
  if(!a||typeof a.userId!=='string'||!a.userId.trim()||a.userId.length>128)
@@ -68,6 +70,14 @@ const cents=(v:unknown,allowZero=false)=>{
  assertCents(v);
  if(!Number.isSafeInteger(v)||v<0||v>9000000000000||(!allowZero&&v===0))
   throw new RangeError('Invalid simulation amount');
+ return v;
+};
+// Individual operations are capped at 9e12 cents; a CARD INVOICE contains
+// many valid operations and may exceed that threshold while remaining safely
+// representable. Never round or reject an otherwise valid consolidated invoice.
+const aggregateCents=(v:unknown)=>{
+ if(typeof v!=='number'||!Number.isSafeInteger(v)||v<0)
+  throw new SimulationTooLarge();
  return v;
 };
 const ms=(date:string)=>Date.parse(date+'T00:00:00.000Z');
@@ -102,7 +112,7 @@ export async function simulatePlanning(db:FinancialDatabase,actor:AuthenticatedA
  const who=owner(actor),what=validate(input);
  // All four F1 dimensions are taken from the existing financial read model.
  // No posted future movement is replayed: current balance already contains it.
- const [base,obligations,invoices,reserves,calendar]=await Promise.all([
+ const [base,obligations,invoices,reserves,calendar,unlinked]=await Promise.all([
   getPlanningSummary(db,actor),
   boundedRows<DueRow>(db,
    'SELECT due_on,outstanding_cents FROM financial_obligation_balances WHERE owner_user_id=? AND outstanding_cents>0 ORDER BY due_on,obligation_id LIMIT 2001',[who]),
@@ -111,10 +121,19 @@ export async function simulatePlanning(db:FinancialDatabase,actor:AuthenticatedA
   boundedRows<ReserveRow>(db,
    "SELECT intention_id,reserved_cents FROM purchase_intention_balances WHERE owner_user_id=? AND state='reserved' ORDER BY intention_id LIMIT 2001",[who]),
   listCalendar(db,actor,input.from,input.to),
+  db.prepare([
+   'SELECT COUNT(*) AS n FROM posted_cash_movements m',
+   "WHERE m.owner_user_id=? AND m.direction='income'",
+   'AND NOT EXISTS(SELECT 1 FROM income_receipt_links l',
+   ' WHERE l.owner_user_id=m.owner_user_id AND l.movement_id=m.movement_id)',
+   'AND NOT EXISTS(SELECT 1 FROM cash_refunds r',
+   ' WHERE r.owner_user_id=m.owner_user_id AND r.refund_movement_id=m.movement_id)',
+  ].join(' ')).bind(who).first<CountRow>(),
  ]);
- const debtTotal=sum(obligations.map(x=>BigInt(cents(x.outstanding_cents))));
- const cardTotal=sum(invoices.map(x=>BigInt(cents(x.outstanding_cents))));
- const reserveTotal=sum(reserves.map(x=>BigInt(cents(x.reserved_cents))));
+ const debtTotal=sum(obligations.map(x=>BigInt(aggregateCents(x.outstanding_cents))));
+ const cardTotal=sum(invoices.map(x=>BigInt(aggregateCents(x.outstanding_cents))));
+ const reserveTotal=sum(reserves.map(x=>BigInt(aggregateCents(x.reserved_cents))));
+ if(!unlinked||!Number.isSafeInteger(unlinked.n)||unlinked.n<0)throw new SimulationTooLarge();
  if(debtTotal!==BigInt(base.obligationsCents)||cardTotal!==BigInt(base.cardInvoicesCents)||
    reserveTotal!==BigInt(base.activeReserveCents))
   throw new SimulationConflict('Financial snapshot changed during the simulation');
@@ -135,13 +154,13 @@ export async function simulatePlanning(db:FinancialDatabase,actor:AuthenticatedA
   validateDate(row.due_on);
   // Overdue existing debt is allocated at the start, never silently ignored.
   const date=row.due_on<input.from?input.from:row.due_on;
-  if(date<=input.to)add(due,date,BigInt(cents(row.outstanding_cents)));
+  if(date<=input.to)add(due,date,BigInt(aggregateCents(row.outstanding_cents)));
  }
  const unreceivedSources:ProjectedIncome[]=[];
  for(const e of calendar.expectations){
   if(e.state==='canceled'||e.remainingCents===0)continue;
   if(e.currentOn<input.from||e.currentOn>input.to)continue;
-  const remaining=BigInt(cents(e.remainingCents));
+  const remaining=BigInt(aggregateCents(e.remainingCents));
   add(explicit,e.currentOn,remaining);
   unreceivedSources.push({
    sourceId:e.sourceId,occurrenceKey:e.occurrenceKey,sourceName:e.sourceName,
@@ -201,6 +220,7 @@ export async function simulatePlanning(db:FinancialDatabase,actor:AuthenticatedA
   activeVirtualReserveCents:safe(reserveTotal),
   hypothetical,
   unreceivedExplicitIncomeCents:safe(sum([...explicit.values()])),unreceivedSources,
+  unlinkedRealIncomeCount:unlinked.n,
   conservative:{basis:'current_cash_and_known_outstanding_only',
    endingCashCents:last.conservativeCashAfterAssumedPaymentsCents,
    endingFreeMarginCents:last.conservativeFreeMarginCents,
@@ -216,6 +236,7 @@ export async function simulatePlanning(db:FinancialDatabase,actor:AuthenticatedA
    'Confirmed, planned or delayed income expectations are not bank deposits: only unreceived remaining portions appear in the planned scenario.',
    'Active reserves reduce free margin from the start; converting a reserved intention releases that allocation as it creates a hypothetical payable.',
    'Free margin deducts known future liabilities as well as reserved amounts; projected cash and margin are different measures.',
+   ...(unlinked.n>0?['Some already-posted bank income has no explicit expectation link. The planned scenario could overstate cash if such deposits belong to currently outstanding expectations; review those links.']:[]),
   ],
  };
 }
