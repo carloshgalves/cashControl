@@ -152,5 +152,19 @@ for(const path of ['/api/works','/api/works/:workId','/api/works/:workId/states'
    async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),configuredOrigin(c.env));
  });
 }
+for(const path of [
+ '/api/income-sources','/api/income-sources/:sourceId',
+ '/api/income-sources/:sourceId/expectations',
+ '/api/income-sources/:sourceId/expectations/:occurrenceKey/events',
+ '/api/income-sources/:sourceId/expectations/:occurrenceKey/receipts',
+ '/api/income-calendar','/api/income-receipts/available',
+]){
+ app.all(path,c=>{
+  const auth=createWorkerAuth(c.env);
+  return handleFinancialHttp(c.req.raw,c.env.DB as unknown as FinancialDatabase,
+    async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),
+    configuredOrigin(c.env));
+ });
+}
 app.notFound((c) => c.json({ error: 'NOT_FOUND' }, 404));
 export default app;

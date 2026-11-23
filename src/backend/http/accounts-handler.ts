@@ -1,3 +1,4 @@
+import {createSource,getSource,listSources,createManualExpectation,listCalendar,changeExpectation,linkIncomeReceipt,listAvailableIncomeMovements,listExpectationEvents,listExpectationReceipts,IncomeNotFound,IncomeConflict,IncomeTooLarge} from '../income/income.ts';
 import { createWork,listWorks,getWork,changeWorkState,linkWorkMovement,getWorkHistory,getWorkMovements,availableWorkMovements,WorkNotFound,WorkConflict } from '../work/work.ts';
 import { createAccount, getAccount, listAccounts, type AuthenticatedActor, type FinancialDatabase } from '../accounts/accounts.ts';
 import { parseCents } from '../../domain/money.ts';
@@ -260,6 +261,89 @@ export async function handleFinancialHttp(
         note: value.note as string | null | undefined,
       });
       return json({ transfer }, 201);
+    }
+
+
+    // E2: forecasts and receipt attribution never write or manufacture cash.
+    if(path==='/api/income-sources'||path==='/api/income-calendar'||path==='/api/income-receipts/available'||path.startsWith('/api/income-sources/')){
+      const sourcePath=path.match(/^\/api\/income-sources\/([0-9a-f-]{36})$/);
+      const manualPath=path.match(/^\/api\/income-sources\/([0-9a-f-]{36})\/expectations$/);
+      const expectedPath=path.match(/^\/api\/income-sources\/([0-9a-f-]{36})\/expectations\/(scheduled_\d{4}-\d{2}-\d{2}|manual_[0-9a-f-]{36})\/(events|receipts)$/);
+      const paged=method==='GET'&&(path==='/api/income-sources'||path==='/api/income-receipts/available'||expectedPath!==null);
+      const allowed=path==='/api/income-calendar'&&method==='GET'?new Set(['from','to']):paged?new Set(['limit','offset']):new Set<string>();
+      let bad=false;requestURL.searchParams.forEach((_v,k)=>{if(!allowed.has(k)||requestURL.searchParams.getAll(k).length!==1)bad=true;});
+      if(bad)return error(400,'INVALID_FILTER');
+      const pg=(k:string,def:number)=>{const v=requestURL.searchParams.get(k);if(v===null)return def;if(!/^(?:0|[1-9]\d{0,5})$/.test(v))throw new TypeError('Invalid page');return Number(v);};
+      if(method==='GET'){
+        if(path==='/api/income-sources')return json({sources:await listSources(database,actor,pg('limit',50),pg('offset',0))});
+        if(path==='/api/income-calendar'){
+          const from=requestURL.searchParams.get('from'),to=requestURL.searchParams.get('to');
+          if(!from||!to)return error(400,'INVALID_PERIOD');
+          return json({calendar:await listCalendar(database,actor,from,to)});
+        }
+        if(path==='/api/income-receipts/available')return json({movements:await listAvailableIncomeMovements(database,actor,pg('limit',50),pg('offset',0))});
+        if(sourcePath)return json({source:await getSource(database,actor,sourcePath[1]!)});
+        if(expectedPath&&expectedPath[3]==='events')return json({events:await listExpectationEvents(database,actor,expectedPath[1]!,expectedPath[2]!,pg('limit',50),pg('offset',0))});
+        if(expectedPath&&expectedPath[3]==='receipts')return json({receipts:await listExpectationReceipts(database,actor,expectedPath[1]!,expectedPath[2]!,pg('limit',50),pg('offset',0))});
+        return error(404,'NOT_FOUND');
+      }
+      if(path!=='/api/income-sources'&&!manualPath&&!expectedPath)return error(404,'NOT_FOUND');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,4096);
+      if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;
+      try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const p=raw as Record<string,unknown>;
+      const fields=path==='/api/income-sources'
+        ? ['idempotencyKey','name','relationship','payKind','periodicity','anchorOn','endOn','intervalDays','fixedNet']
+        : manualPath?['idempotencyKey','expectedOn','amount']
+        : expectedPath?.[3]==='events'?['idempotencyKey','state','newOn','reason']
+        : ['idempotencyKey','movementId'];
+      if(Object.keys(p).some(k=>!fields.includes(k))||typeof p.idempotencyKey!=='string')return error(400,'INVALID_BODY');
+      if(path==='/api/income-sources'){
+        if(typeof p.name!=='string'||
+           !['employment','public','continuous','freelance','other'].includes(String(p.relationship))||
+           !['fixed','variable','mixed','occasional'].includes(String(p.payKind))||
+           !['none','weekly','fortnightly','monthly','custom'].includes(String(p.periodicity))||
+           ['anchorOn','endOn'].some(k=>p[k]!==undefined&&p[k]!==null&&typeof p[k]!=='string')||
+           (p.intervalDays!==undefined&&p.intervalDays!==null&&!Number.isInteger(p.intervalDays))||
+           (p.fixedNet!==undefined&&p.fixedNet!==null&&typeof p.fixedNet!=='string'))return error(400,'INVALID_BODY');
+        return json({source:await createSource(database,actor,{
+          idempotencyKey:p.idempotencyKey,name:p.name,
+          relationship:p.relationship as 'employment'|'public'|'continuous'|'freelance'|'other',
+          payKind:p.payKind as 'fixed'|'variable'|'mixed'|'occasional',
+          periodicity:p.periodicity as 'none'|'weekly'|'fortnightly'|'monthly'|'custom',
+          anchorOn:p.anchorOn as string|null|undefined,endOn:p.endOn as string|null|undefined,
+          intervalDays:p.intervalDays as number|null|undefined,
+          fixedNetCents:typeof p.fixedNet==='string'?parseCents(p.fixedNet):null,
+        })},201);
+      }
+      if(manualPath){
+        if(typeof p.expectedOn!=='string'||typeof p.amount!=='string')return error(400,'INVALID_BODY');
+        const occurrenceKey=await createManualExpectation(database,actor,manualPath[1]!,{
+          idempotencyKey:p.idempotencyKey,expectedOn:p.expectedOn,amountCents:parseCents(p.amount),
+        });
+        return json({occurrenceKey},201);
+      }
+      if(expectedPath?.[3]==='events'){
+        if(!['confirmed','delayed','canceled'].includes(String(p.state))||
+          (p.newOn!==undefined&&p.newOn!==null&&typeof p.newOn!=='string')||
+          (p.reason!==undefined&&p.reason!==null&&typeof p.reason!=='string'))return error(400,'INVALID_BODY');
+        const expectation=await changeExpectation(database,actor,expectedPath[1]!,expectedPath[2]!,{
+          idempotencyKey:p.idempotencyKey,state:p.state as 'confirmed'|'delayed'|'canceled',
+          newOn:p.newOn as string|null|undefined,reason:p.reason as string|null|undefined,
+        });
+        return json({expectation},201);
+      }
+      if(expectedPath?.[3]==='receipts'){
+        if(typeof p.movementId!=='string')return error(400,'INVALID_BODY');
+        const expectation=await linkIncomeReceipt(database,actor,expectedPath[1]!,expectedPath[2]!,{
+          idempotencyKey:p.idempotencyKey,movementId:p.movementId,
+        });
+        return json({expectation},201);
+      }
+      return error(404,'NOT_FOUND');
     }
 
     if(path==='/api/works'||path==='/api/work-movements/available'||path.startsWith('/api/works/')){
@@ -613,6 +697,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof IncomeNotFound)return error(404,'NOT_FOUND');
+    if(cause instanceof IncomeConflict)return error(409,'CONFLICT');
+    if(cause instanceof IncomeTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof WorkNotFound)return error(404,'NOT_FOUND');
     if(cause instanceof WorkConflict)return error(409,'CONFLICT');
     if (cause instanceof CreditCardUnavailable || cause instanceof CreditPurchaseUnavailable ||
