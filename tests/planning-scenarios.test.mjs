@@ -319,3 +319,41 @@ test('F2 HTTP POST is read-only, strict Better Auth/Origin, malformed/foreign re
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,0);
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM purchase_intention_events').get().n,1);
 }));
+
+
+test('F2 valid consolidated card invoice >9e12 cents retains exact aggregate without rejecting or rounding',()=>using(async db=>{
+ await wallet(db,A,0);
+ const card=await createCard(db,A,{idempotencyKey:key('large-card'),name:'Cartão de grande valor',
+  limitCents:9000000000000,closingDay:20,dueDay:25},clock);
+ await createPurchase(db,A,{idempotencyKey:key('large-1'),cardId:card.cardId,
+  title:'Equipamento 1',totalCents:6000000000000,purchasedOn:'2026-11-11',installments:1},clock);
+ await createPurchase(db,A,{idempotencyKey:key('large-2'),cardId:card.cardId,
+  title:'Equipamento 2',totalCents:6000000000000,purchasedOn:'2026-11-11',installments:1},clock);
+ const f1=await getPlanningSummary(db,A);
+ assert.equal(f1.cardInvoicesCents,12000000000000);
+ const f2=await simulatePlanning(db,A,input());
+ assert.deepEqual([f2.existingOutstandingCardInvoicesCents,at(f2,'2026-11-25').outstandingPaymentsCents,
+  f2.conservative.endingFreeMarginCents], [12000000000000,12000000000000,-12000000000000]);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM card_invoice_payments').get().n,0);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,0);
+}));
+
+test('F2 unlinked real income warns of potential duplicate expectation, but matching is never guessed',()=>using(async db=>{
+ const a=await wallet(db,A,0);
+ const s=await freelancer(db),occ=await expect(db,s,30000,'2026-11-28',A,'unlinked');
+ const real=await postMovement(db,A,{idempotencyKey:key('real-unlinked'),accountId:a.accountId,
+  direction:'income',amountCents:10000,method:'pix',description:'Entrada sem proveniência',
+  occurredOn:'2026-11-11'},clock);
+ let simulated=await simulatePlanning(db,A,input());
+ assert.deepEqual([simulated.unlinkedRealIncomeCount,simulated.openingRealCashCents,
+  simulated.unreceivedExplicitIncomeCents,simulated.planned.endingCashCents],
+  [1,10000,30000,40000]);
+ assert.ok(simulated.notes.some(x=>x.includes('could overstate')));
+ await linkIncomeReceipt(db,A,s.sourceId,occ,{
+  idempotencyKey:key('link-after-warning'),movementId:real.movementId},clock);
+ simulated=await simulatePlanning(db,A,input());
+ assert.deepEqual([simulated.unlinkedRealIncomeCount,simulated.unreceivedExplicitIncomeCents,
+  simulated.planned.endingCashCents],[0,20000,30000]);
+ assert.equal(simulated.notes.some(x=>x.includes('could overstate')),false);
+ assert.equal((await getDashboard(db,A,{from,to})).cashFlow.incomeCents,10000);
+}));
