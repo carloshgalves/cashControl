@@ -168,6 +168,7 @@ export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
       <label><input type="checkbox" checked={confirmed} onChange={e=>{setConfirmed(e.target.checked);keys.current.action=crypto.randomUUID();}}/>
        Confirmo que a compra foi concretizada e quero registrar o compromisso.</label>
       <button type="button" className="primary-btn" disabled={!usable||!confirmed}
+       data-ready={ready} data-loading={loading} data-busy={busy} data-confirmed={confirmed}
        onClick={()=>transition('convert')}>Converter em obrigação sem duplicar reserva</button>
      </div>
      <button type="button" className="text-btn" disabled={!usable} onClick={()=>transition('exclude')}>
