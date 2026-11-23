@@ -123,6 +123,7 @@ for (const path of ['/api/timeline', '/api/alerts']) {
 for(const path of [
  '/api/intentions','/api/intentions/:intentionId','/api/intentions/:intentionId/events',
  '/api/planning-summary',
+ '/api/planning/simulate',
 ]){
  app.all(path,c=>{
   const auth=createWorkerAuth(c.env);
