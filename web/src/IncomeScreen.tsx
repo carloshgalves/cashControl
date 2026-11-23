@@ -3,6 +3,7 @@ import type {FormEvent} from 'react';
 import {ApiError,allPages,request} from './api.ts';
 import {money,monthBounds,parseBankInvoiceAmount} from './finance.ts';
 import './cards.css';
+import {PayrollPanel} from './PayrollPanel.tsx';
 
 type Source={
  sourceId:string;name:string;relationship:string;payKind:string;periodicity:string;
@@ -41,6 +42,7 @@ export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
  const [available,setAvailable]=useState<Move[]>([]);
  const [history,setHistory]=useState<Event[]>([]),[receipts,setReceipts]=useState<Move[]>([]);
  const [selected,setSelected]=useState<string|null>(null);
+ const [salarySourceId,setSalarySourceId]=useState<string|null>(null);
  const [sourceForm,setSourceForm]=useState(false),[manualForm,setManualForm]=useState(false);
  const [draft,setDraft]=useState(blank),[plan,setPlan]=useState(manualBlank),[event,setEvent]=useState(eventBlank);
  const [movementId,setMovementId]=useState('');
@@ -135,7 +137,7 @@ export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
  const choose=(e:Item)=>{
   const next=e.sourceId+'|'+e.occurrenceKey;
   if(next===selected)return;
-  setSelected(next);setEvent(eventBlank);setMovementId('');
+  setSelected(next);setSalarySourceId(e.sourceId);setEvent(eventBlank);setMovementId('');
   keys.current.event=crypto.randomUUID();keys.current.link=crypto.randomUUID();
  };
  const updatePlan=(k:keyof typeof manualBlank,v:string)=>{keys.current.manual=crypto.randomUUID();setPlan(s=>({...s,[k]:v}));};
@@ -184,7 +186,10 @@ export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
    <h3>Fontes ({sources.length})</h3>
    {!sources.length&&<p>Nenhuma fonte cadastrada. A receita normal pode ser registrada sem fonte.</p>}
    {sources.map(s=><div className="credit-installment" key={s.sourceId}>
-    <span><strong>{s.name}</strong><small>{types[s.relationship]} · {types[s.payKind]} · {types[s.periodicity]}</small></span>
+    <span><strong>{s.name}</strong><small>{types[s.relationship]} · {types[s.payKind]} · {types[s.periodicity]}</small>
+     {['fixed','mixed'].includes(s.payKind)&&<button type="button" className="text-btn" disabled={busy}
+       onClick={()=>setSalarySourceId(current=>current===s.sourceId?null:s.sourceId)}>Gerenciar remuneração</button>}
+    </span>
     <b>{s.fixedNetCents===null?'Sem parcela fixa':money(s.fixedNetCents)}</b>
    </div>)}
   </div>
@@ -226,6 +231,12 @@ export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
    <h3>Histórico imutável da expectativa</h3>
    {!history.length&&<p>Sem alteração de situação registrada.</p>}
    {history.map((h,i)=><div className="credit-installment" key={i}><span><strong>{types[h.state]??h.state} · {h.newOn}</strong><small>{h.reason??'Sem motivo'} · {new Date(h.createdAt).toLocaleString('pt-BR')}</small></span></div>)}
-  </section>}</>}
+  </section>}
+  {salarySourceId&&sources.some(s=>s.sourceId===salarySourceId&&['fixed','mixed'].includes(s.payKind))&&
+   <PayrollPanel key={salarySourceId+'|'+(chosen?.sourceId===salarySourceId?chosen.occurrenceKey:'none')}
+    source={sources.find(s=>s.sourceId===salarySourceId)!}
+    occurrenceKey={chosen?.sourceId===salarySourceId?chosen.occurrenceKey:null}
+    onChanged={()=>setRevision(x=>x+1)} onUnauthorized={onUnauthorized}/>}
+  </>}
  </section>;
 }

@@ -51,3 +51,5 @@
 @media(max-width:680px){.credit-reconcile-values{grid-template-columns:1fr}.credit-reconcile .credit-toolbar{align-items:start}}
 
 .income-screen .credit-item b,.income-screen .credit-installment b{white-space:normal;overflow-wrap:anywhere;text-align:right}.income-screen .credit-item{width:100%;cursor:pointer}.income-screen .credit-panel h3,.income-screen .credit-panel p{overflow-wrap:anywhere}.income-screen .credit-reconcile-values{margin:4px 0}.income-screen .credit-form textarea{width:100%}
+
+.payroll-panel{margin-top:14px}.payroll-panel .credit-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.payroll-panel .credit-two .text-btn{justify-self:start}.payroll-panel .credit-reconcile-history{display:grid;gap:8px}.payroll-panel .credit-installment b,.income-screen .credit-installment b{white-space:normal;overflow-wrap:anywhere;text-align:right}.payroll-panel .credit-form{margin-top:10px}@media(max-width:680px){.payroll-panel .credit-two{grid-template-columns:1fr}}
