@@ -64,8 +64,9 @@ const safe=(v:bigint)=>{
  return Number(v);
 };
 const cents=(v:unknown,allowZero=false)=>{
+ if(typeof v!=='number')throw new TypeError('Money must be exact cents');
  assertCents(v);
- if(typeof v!=='number'||!Number.isSafeInteger(v)||v<0||v>9000000000000||(!allowZero&&v===0))
+ if(!Number.isSafeInteger(v)||v<0||v>9000000000000||(!allowZero&&v===0))
   throw new RangeError('Invalid simulation amount');
  return v;
 };
