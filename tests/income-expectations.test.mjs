@@ -8,6 +8,7 @@ import {createSource,getSource,listSources,createManualExpectation,listCalendar,
 import {createAccount} from '../src/backend/accounts/accounts.ts';
 import {postMovement} from '../src/backend/movements/movements.ts';
 import {getDashboard} from '../src/backend/dashboard/dashboard.ts';
+import {refundPaidExpense} from '../src/backend/compensations/compensations.ts';
 import {readExportTimeline} from '../src/backend/timeline/timeline.ts';
 import {makeReport} from '../src/backend/reports/report.ts';
 import {handleFinancialHttp} from '../src/backend/http/accounts-handler.ts';
@@ -183,4 +184,92 @@ test('E2 HTTP auth, CSRF, malformed filters, replay, 404 and amounts',()=>using(
  assert.equal((await http(db,update,'alice','POST',{idempotencyKey:key('confirm-http'),state:'confirmed'})).status,201);
  assert.equal((await http(db,update,'bob')).status,404);
  assert.equal((await http(db,'/api/income-sources','alice','POST',{...payload,name:'Alterado'})).status,409);
+}));
+
+
+test('E2 weekly, fortnightly, custom intervals and end date are explicit and deterministic',()=>using(async db=>{
+ const base={idempotencyKey:key('weekly'),name:'Semanal',relationship:'continuous',payKind:'fixed',
+  periodicity:'weekly',anchorOn:'2026-11-01',fixedNetCents:10000};
+ const weekly=await createSource(db,actor('alice'),base,clock);
+ const fortnightly=await createSource(db,actor('alice'),{...base,idempotencyKey:key('fortnightly'),name:'Quinzenal',periodicity:'fortnightly'},clock);
+ const custom=await createSource(db,actor('alice'),{...base,idempotencyKey:key('custom'),name:'Customizado',
+  periodicity:'custom',intervalDays:10,anchorOn:'2026-11-03',endOn:'2026-11-25'},clock);
+ const nov=(await listCalendar(db,actor('alice'),'2026-11-01','2026-11-30')).expectations;
+ const dates=id=>nov.filter(x=>x.sourceId===id).map(x=>x.originalOn);
+ assert.deepEqual(dates(weekly.sourceId),['2026-11-01','2026-11-08','2026-11-15','2026-11-22','2026-11-29']);
+ assert.deepEqual(dates(fortnightly.sourceId),['2026-11-01','2026-11-15','2026-11-29']);
+ assert.deepEqual(dates(custom.sourceId),['2026-11-03','2026-11-13','2026-11-23']);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,0);
+ assert.equal((await listCalendar(db,actor('alice'),'2026-12-01','2026-12-31')).expectations.filter(x=>x.sourceId===custom.sourceId).length,0);
+}));
+test('E2 SQL forbids fabricated scheduled amount or invented recurrence date',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),monthly(),clock);
+ const sql='INSERT INTO income_expectations(owner_user_id,source_id,occurrence_key,creation_key,kind,original_on,expected_cents,created_at) VALUES(?,?,?,?,?,?,?,?)';
+ const args=(day,amount,tag)=>['alice',src.sourceId,'scheduled_'+day,key(tag),'scheduled',day,amount,clock().toISOString()];
+ assert.throws(()=>db.raw.prepare(sql).run(...args('2026-02-27',300000,'fake-day')),/INCOME_SCHEDULE_INVALID/);
+ assert.throws(()=>db.raw.prepare(sql).run(...args('2026-02-28',300001,'fake-money')),/INCOME_SCHEDULE_INVALID/);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_expectations').get().n,0);
+ await changeExpectation(db,actor('alice'),src.sourceId,'scheduled_2026-02-28',{idempotencyKey:key('valid'),state:'confirmed'},clock);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_expectations').get().n,1);
+}));
+test('E2 duplicate confirmation is rejected but replay of original after later delay is safe',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),monthly(),clock),occ='scheduled_2026-11-30';
+ const confirm={idempotencyKey:key('confirmation'),state:'confirmed'};
+ await changeExpectation(db,actor('alice'),src.sourceId,occ,confirm,clock);
+ await assert.rejects(()=>changeExpectation(db,actor('alice'),src.sourceId,occ,{idempotencyKey:key('new-confirm'),state:'confirmed'},clock),IncomeConflict);
+ await changeExpectation(db,actor('alice'),src.sourceId,occ,{idempotencyKey:key('postpone'),state:'delayed',newOn:'2026-12-03'},clock);
+ const replay=await changeExpectation(db,actor('alice'),src.sourceId,occ,confirm,clock);
+ assert.equal(replay.state,'delayed','replay does not return an obsolete confirmed state or duplicate event');
+ assert.equal((await listExpectationEvents(db,actor('alice'),src.sourceId,occ)).length,2);
+}));
+test('E2 failed INSERT of receipt rolls back implicit generated expectation creation',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),monthly(),clock),a=await account(db),m=await income(db,a,'cash',10000);
+ db.raw.exec("CREATE TRIGGER e2_fault BEFORE INSERT ON income_receipt_links BEGIN SELECT RAISE(ABORT,'E2_INJECTED_FAILURE'); END");
+ await assert.rejects(()=>linkIncomeReceipt(db,actor('alice'),src.sourceId,'scheduled_2026-11-30',{
+  idempotencyKey:key('retry-after-fault'),movementId:m.movementId,
+ },clock),/E2_INJECTED_FAILURE/);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_expectations').get().n,0);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_receipt_links').get().n,0);
+ db.raw.exec('DROP TRIGGER e2_fault');
+ await linkIncomeReceipt(db,actor('alice'),src.sourceId,'scheduled_2026-11-30',{
+  idempotencyKey:key('retry-after-fault'),movementId:m.movementId,
+ },clock);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_expectations').get().n,1);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,1);
+}));
+test('E2 refund credits are ineligible as paychecks or freelance receipts',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),monthly(),clock),a=await account(db);
+ const expense=await postMovement(db,actor('alice'),{idempotencyKey:key('cost'),accountId:a.accountId,
+  direction:'expense',amountCents:10000,method:'pix',description:'Compra',
+  occurredOn:'2026-11-11'},clock);
+ const refund=await refundPaidExpense(db,actor('alice'),{
+  idempotencyKey:key('refund'),originalMovementId:expense.movementId,
+  accountId:a.accountId,amountCents:2000,method:'pix',refundedOn:'2026-11-12',
+ },clock);
+ assert.deepEqual(await listAvailableIncomeMovements(db,actor('alice')),[]);
+ await assert.rejects(()=>linkIncomeReceipt(db,actor('alice'),src.sourceId,'scheduled_2026-11-30',{
+  idempotencyKey:key('wrong-refund-link'),movementId:refund.refundMovementId,
+ },clock),IncomeNotFound);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_receipt_links').get().n,0);
+}));
+test('E2 SQL rejects any receipt link pushing an occurrence beyond exact safe cents',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),monthly(),clock);
+ await changeExpectation(db,actor('alice'),src.sourceId,'scheduled_2026-11-30',{idempotencyKey:key('prepare'),state:'confirmed'},clock);
+ const a=await account(db);
+ const raw=db.raw.prepare("INSERT INTO posted_cash_movements(owner_user_id,movement_id,creation_key,account_id,direction,amount_cents,payment_method,description,occurred_on,created_at) VALUES(?,?,?,?,'income',?,'pix','Large receipt','2026-11-11',?)");
+ const assign=db.raw.prepare('INSERT INTO income_receipt_links(owner_user_id,source_id,occurrence_key,movement_id,creation_key,created_at) VALUES(?,?,?,?,?,?)');
+ db.raw.exec('BEGIN IMMEDIATE');
+ for(let n=0;n<1000;n++){
+  const mid=crypto.randomUUID();
+  raw.run('alice',mid,key('large-'+n),a.accountId,9000000000000,clock().toISOString());
+  assign.run('alice',src.sourceId,'scheduled_2026-11-30',mid,key('link-'+n),clock().toISOString());
+ }
+ const last=crypto.randomUUID();
+ raw.run('alice',last,key('large-last'),a.accountId,9000000000000,clock().toISOString());
+ db.raw.exec('COMMIT');
+ await assert.rejects(()=>linkIncomeReceipt(db,actor('alice'),src.sourceId,'scheduled_2026-11-30',{
+  idempotencyKey:key('overflow'),movementId:last,
+ },clock),IncomeConflict);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_receipt_links').get().n,1000);
+ assert.equal(db.raw.prepare('SELECT received_cents FROM income_expectation_totals').get().received_cents,9000000000000000);
 }));
