@@ -1,3 +1,4 @@
+import {confirmSalaryWithholding,listSalaryWithholdings,listObligationWithholdings,WithholdingConflict,WithholdingNotFound,WithholdingNotApplicable} from '../payroll/withholdings.ts';
 import {createRevision,listRevisions,createStatement,getStatement,listStatements,SalaryConflict,SalaryNotApplicable,SalaryTooLarge} from '../payroll/payroll.ts';
 import {createSource,getSource,listSources,createManualExpectation,listCalendar,changeExpectation,linkIncomeReceipt,listAvailableIncomeMovements,listExpectationEvents,listExpectationReceipts,IncomeNotFound,IncomeConflict,IncomeTooLarge} from '../income/income.ts';
 import { createWork,listWorks,getWork,changeWorkState,linkWorkMovement,getWorkHistory,getWorkMovements,availableWorkMovements,WorkNotFound,WorkConflict } from '../work/work.ts';
@@ -265,6 +266,50 @@ export async function handleFinancialHttp(
     }
 
 
+
+
+    // E4: only a separate EXPLICIT retention confirmation may reduce a debt.
+    // These routes never create posted_cash_movements or bank debits.
+    {
+      const payrollPath=path.match(/^\/api\/income-sources\/([0-9a-f-]{36})\/expectations\/(scheduled_\d{4}-\d{2}-\d{2}|manual_[0-9a-f-]{36})\/salary\/withholdings$/);
+      const obligationPath=path.match(/^\/api\/obligations\/([0-9a-f-]{36})\/withholdings$/);
+      if(payrollPath||obligationPath){
+        let invalidFilter=false;
+        const allowed=method==='GET'?new Set(['limit','offset']):new Set<string>();
+        requestURL.searchParams.forEach((_v,k)=>{if(!allowed.has(k)||requestURL.searchParams.getAll(k).length!==1)invalidFilter=true;});
+        if(invalidFilter)return error(400,'INVALID_FILTER');
+        const pg=(k:string,def:number)=>{
+          const raw=requestURL.searchParams.get(k);
+          if(raw===null)return def;
+          if(!/^(?:0|[1-9]\d{0,5})$/.test(raw))throw new TypeError('Invalid page');
+          return Number(raw);
+        };
+        if(method==='GET'){
+          if(payrollPath)return json({withholdings:await listSalaryWithholdings(database,actor,payrollPath[1]!,payrollPath[2]!,pg('limit',50),pg('offset',0))});
+          return json({withholdings:await listObligationWithholdings(database,actor,obligationPath![1]!,pg('limit',50),pg('offset',0))});
+        }
+        if(!payrollPath)return error(404,'NOT_FOUND');
+        if(!request.body)return error(400,'INVALID_BODY');
+        const bytes=await readBounded(request,4096);
+        if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+        let raw:unknown;
+        try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+        catch{return error(400,'INVALID_JSON');}
+        if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+        const p=raw as Record<string,unknown>;
+        if(Object.keys(p).some(k=>!['idempotencyKey','statementId','discountIndex','obligationId','amount','confirmedOn','confirmRetained'].includes(k))||
+           typeof p.idempotencyKey!=='string'||!Number.isSafeInteger(p.statementId)||
+           !Number.isInteger(p.discountIndex)||typeof p.obligationId!=='string'||
+           typeof p.amount!=='string'||typeof p.confirmedOn!=='string'||p.confirmRetained!==true)
+           return error(400,'INVALID_BODY');
+        const withholding=await confirmSalaryWithholding(database,actor,payrollPath[1]!,payrollPath[2]!,{
+          idempotencyKey:p.idempotencyKey,statementId:p.statementId as number,
+          discountIndex:p.discountIndex as number,obligationId:p.obligationId,
+          amountCents:parseCents(p.amount),confirmedOn:p.confirmedOn,confirmRetained:true,
+        });
+        return json({withholding},201);
+      }
+    }
 
     // E3 payroll composition is analytic: never credit income or pay obligations.
     if(path.startsWith('/api/income-sources/')){
@@ -774,6 +819,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof WithholdingNotFound)return error(404,'NOT_FOUND');
+    if(cause instanceof WithholdingConflict)return error(409,'CONFLICT');
+    if(cause instanceof WithholdingNotApplicable)return error(409,'NOT_APPLICABLE');
     if(cause instanceof SalaryConflict)return error(409,'CONFLICT');
     if(cause instanceof SalaryNotApplicable)return error(409,'NOT_APPLICABLE');
     if(cause instanceof SalaryTooLarge)return error(413,'RESULT_TOO_LARGE');

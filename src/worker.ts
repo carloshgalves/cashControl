@@ -154,6 +154,8 @@ for(const path of ['/api/works','/api/works/:workId','/api/works/:workId/states'
 }
 for(const path of [
  '/api/income-sources/:sourceId/salary-revisions',
+ '/api/income-sources/:sourceId/expectations/:occurrenceKey/salary/withholdings',
+ '/api/obligations/:obligationId/withholdings',
  '/api/income-sources/:sourceId/expectations/:occurrenceKey/salary',
  '/api/income-sources','/api/income-sources/:sourceId',
  '/api/income-sources/:sourceId/expectations',
