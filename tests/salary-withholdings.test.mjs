@@ -8,7 +8,7 @@ import {confirmSalaryWithholding,listSalaryWithholdings,listObligationWithholdin
 import {createAccount} from '../src/backend/accounts/accounts.ts';
 import {postMovement} from '../src/backend/movements/movements.ts';
 import {createObligation,getObligation,payObligation,listObligationPayments} from '../src/backend/obligations/obligations.ts';
-import {cancelUnpaidObligation} from '../src/backend/compensations/compensations.ts';
+import {cancelUnpaidObligation,refundPaidExpense} from '../src/backend/compensations/compensations.ts';
 import {getDashboard} from '../src/backend/dashboard/dashboard.ts';
 import {readExportTimeline} from '../src/backend/timeline/timeline.ts';
 import {makeReport} from '../src/backend/reports/report.ts';
@@ -144,17 +144,19 @@ test('E4 idempotency and concurrent attempts atomically protect same discount an
 }));
 test('E4 cash payment and withholding share a single outstanding balance under concurrency',()=>using(async db=>{
  const f=await fixture(db),s=await paycheck(db,f),a=await bank(db);
- await Promise.allSettled([
+ await income(db,actorA,a);
+ const attempts=await Promise.allSettled([
   confirmSalaryWithholding(db,actorA,f.source.sourceId,occ,pay(s,f.debt,30000,'withhold-race'),clock),
   payObligation(db,actorA,{idempotencyKey:key('cash-race'),obligationId:f.debt.obligationId,accountId:a.accountId,
    amountCents:30000,method:'pix',paidOn:'2026-11-30'},clock),
  ]);
+ assert.equal(attempts.filter(x=>x.status==='fulfilled').length,1,'both contenders must be eligible but only one can commit');
  const o=await getObligation(db,actorA,f.debt.obligationId);
  assert.deepEqual([o.paidCents,o.outstandingCents,o.state],[30000,0,'paid']);
  const cash=db.raw.prepare('SELECT COUNT(*) n FROM financial_obligation_payments').get().n;
  const folha=db.raw.prepare('SELECT COUNT(*) n FROM salary_withheld_obligation_payments').get().n;
  assert.equal(cash+folha,1,'exactly one winner, never duplicate debt settlement');
- assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,cash,'no orphan debit on failed cash race');
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,1+cash,'no orphan debit on failed cash race, independent salary already received');
 }));
 test('E4 cancellation is rejected after withholding even if no bank payment exists',()=>using(async db=>{
  const f=await fixture(db),s=await paycheck(db,f);
@@ -247,4 +249,29 @@ test('E4 INSERT OR REPLACE cannot rewrite even a partially used discount slot wi
  assert.throws(()=>db.raw.prepare(replace).run('alice',paid.paymentId,key('rewrite-partial'),s.statementId,1,f.debt.obligationId,8000,'2026-11-30',clock().toISOString()),/WITHHOLDING_INVALID/);
  assert.equal((await getObligation(db,actorA,f.debt.obligationId)).paidCents,9000);
  assert.equal((await listSalaryWithholdings(db,actorA,f.source.sourceId,occ)).length,1);
+}));
+
+
+test('E4 partial cash plus confirmed withholding closes only the shared outstanding; refund reopens only the cash portion',()=>using(async db=>{
+ const f=await fixture(db),salary=await paycheck(db,f),a=await bank(db);
+ await income(db,actorA,a);
+ const cashPayment=await payObligation(db,actorA,{
+  idempotencyKey:key('cash-before-payroll'),obligationId:f.debt.obligationId,accountId:a.accountId,
+  amountCents:10000,method:'pix',paidOn:'2026-11-30',
+ },clock);
+ assert.deepEqual([(await getObligation(db,actorA,f.debt.obligationId)).paidCents,
+  (await getDashboard(db,actorA,period)).balances.totalCents],[10000,240000]);
+ await confirmSalaryWithholding(db,actorA,f.source.sourceId,occ,
+  pay(salary,f.debt,20000,'remaining-by-payroll'),clock);
+ assert.deepEqual([(await getObligation(db,actorA,f.debt.obligationId)).state,
+  (await getDashboard(db,actorA,period)).cashFlow.expensesCents],['paid',10000]);
+ await refundPaidExpense(db,actorA,{
+  idempotencyKey:key('refund-cash-part'),originalMovementId:cashPayment.movementId,
+  accountId:a.accountId,amountCents:5000,method:'pix',refundedOn:'2026-11-30',
+ },clock);
+ const reopened=await getObligation(db,actorA,f.debt.obligationId);
+ assert.deepEqual([reopened.state,reopened.paidCents,reopened.outstandingCents],['partially_paid',25000,5000]);
+ assert.equal((await listObligationWithholdings(db,actorA,f.debt.obligationId)).length,1);
+ assert.equal((await listObligationPayments(db,actorA,f.debt.obligationId)).length,1);
+ assert.equal((await getDashboard(db,actorA,period)).balances.totalCents,245000);
 }));
