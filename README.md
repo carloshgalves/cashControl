@@ -66,7 +66,7 @@ Nova navegação **Cartões**, opcional, com cadastro de apelido, instituição,
 
 API autenticada: `GET/POST /api/cards`, `GET /api/cards/{id}`, `GET/POST /api/cards/{id}/purchases`, `GET /api/cards/{id}/purchases/{purchaseId}`, `GET /api/cards/{id}/invoices`, `GET /api/cards/{id}/invoices/{AAAA-MM}`. IDs de outro titular retornam 404. Compra e parcelas são imutáveis e criadas em lote transacional, com chave de idempotência por titular.
 
-**Estado D1:** [PR #41](https://github.com/carloshgalves/cashControl/pull/41) mesclada. Pagamentos de fatura e integração ao dashboard/trilha/exportação foram mesclados na [PR #42](https://github.com/carloshgalves/cashControl/pull/42); a conferência manual está em desenvolvimento na D3 / #21. Consulte [relatório técnico de D1](docs/implementation/CREDIT-CARDS-D1-REVIEW.md). Sem deploy remoto nem dados reais na homologação.
+**Estado D1:** [PR #41](https://github.com/carloshgalves/cashControl/pull/41) mesclada. Pagamentos de fatura e integração ao dashboard/trilha/exportação foram mesclados na [PR #42](https://github.com/carloshgalves/cashControl/pull/42); a conferência manual foi integrada pela PR #43 / D3 (#21). Consulte [relatório técnico de D1](docs/implementation/CREDIT-CARDS-D1-REVIEW.md). Sem deploy remoto nem dados reais na homologação.
 
 ## Pagamentos integrais e parciais de faturas — D2 / SPEC-004 (Issue #20)
 
@@ -84,7 +84,7 @@ API autenticada: `GET/POST /api/cards`, `GET /api/cards/{id}`, `GET/POST /api/ca
 
 ## Conferência manual de faturas — D3 / SPEC-004 (Issue #21)
 
-**Implementada na branch `feat/d3-manual-invoice-reconciliation`, aguardando revisão/merge.** Opcional: quem não informa valor da instituição permanece com status **Ainda não informada** e continua usando as faturas normalmente.
+**PR #43 mesclada em `main`.** Opcional: quem não informa valor da instituição permanece com status **Ainda não informada** e continua usando as faturas normalmente.
 
 O usuário digita o **total bruto da fatura** exibido em seu banco ou emissor e o cashControl compara com o **total calculado das compras e parcelas do mesmo cartão/ciclo**, não com o saldo em aberto após pagamentos. Estados: **Valores coincidem** (`matched`), **Divergência pendente** (`pending_divergence`) e **Ainda não informada** (`unreported`). Uma diferença pendente não autoriza ajuste de compra, parcela, dívida, pagamento, saldo ou juros. Nenhuma conexão ou confirmação automática de banco é representada.
 
@@ -93,3 +93,13 @@ A tela de cartão mostra totais lado a lado, diferença com sinal, lista de parc
 Contrato: `GET /api/cards/:cardId/invoices/:cycle/reconciliation?limit=25&offset=0` devolve status e histórico; `POST` no mesmo caminho recebe `{idempotencyKey,reportedTotal}` onde `reportedTotal` é string decimal não negativa. Somente o titular autenticado acessa a fatura, com verificação Better Auth e Origin para POST. Montantes agregados são comparados com aritmética de centavos segura, mesmo quando a soma de várias compras ultrapassa o limite de um lançamento individual.
 
 **Fora do escopo:** importação de extrato, upload de documento, APIs bancárias, identificação automática das causas de divergência, ajustes contábeis automáticos, geração de encargos e alterações de pagamentos/parcelas. [Parecer D3](docs/implementation/CREDIT-INVOICE-D3-REVIEW.md). Sem deploy remoto ou exposição de dados reais.
+
+## Trabalhos, recebimentos e custos — E1 / SPEC-005 (Issue #22)
+
+Implementação na branch `feat/e1-optional-work-costs`, aguardando merge. Cadastro opcional com contratante, valor combinado (opcional), datas previstas, categoria e observações. Estados previsto, confirmado, realizado e cancelado são independentes do estado de recebimento. Cancelamento preserva motivo, histórico e lançamentos anteriores; não cria dinheiro nem certifica dívida exigível.
+
+Na seção **Trabalhos**, registre um serviço e associe movimentações efetivas já existentes. Também é possível abrir o formulário normal de receita ou despesa e vinculá-la após o registro. O vínculo é único por lançamento e titular, imutável e não cria entrada ou saída adicional. Reembolsos reduzem os custos líquidos; créditos de reembolso e pagamentos consolidados de fatura não podem ser vinculados como receita ou custo individual do serviço. Ex.: recebimentos de R$ 100 + R$ 200, despesas de R$ 40 + R$ 60 → resultado líquido de R$ 200.
+
+API autenticada: `GET/POST /api/works`, `GET /api/works/:workId`, `GET/POST /api/works/:workId/states`, `GET/POST /api/works/:workId/movements`, `GET /api/work-movements/available`. A migração `0010_work_services.sql` registra fichas, eventos e vínculos; a visão calcula os valores em centavos. Não há nova movimentação no vínculo, nem expectativa creditada automaticamente. O fluxo geral e os relatórios permanecem os mesmos.
+
+Validação: `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, `npm test`, `npm run ui:test`, `npm run e1:e2e` com D1 local e Chromium/Better Auth. [Parecer técnico E1](docs/implementation/WORK-SERVICES-E1-REVIEW.md). Fora do escopo: recorrência E2, rateio, alteração/desvinculação de históricos, gestão de horas, faturamento, atribuição de compra individual de cartão, integração bancária e deploy remoto.
