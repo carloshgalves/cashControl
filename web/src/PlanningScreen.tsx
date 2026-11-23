@@ -22,9 +22,6 @@ const parse=(v:string)=>{
  const d=parseBankInvoiceAmount(v);
  return d!==null&&BigInt(d.replace('.',''))<=9000000000000n?d:null;
 };
-function currentDate(){
- const now=new Date();return now.toLocaleDateString('en-CA');
-}
 export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
  refreshKey:number;onChanged:()=>void;onUnauthorized:()=>void;
 }){
