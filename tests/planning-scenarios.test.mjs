@@ -230,11 +230,13 @@ test('F2 partial outstanding cash obligation and card invoice balance are schedu
   title:'Monitor',totalCents:60000,purchasedOn:'2026-11-11',installments:2},clock);
  const r=await simulatePlanning(db,A,input());
  assert.deepEqual([r.existingOutstandingObligationsCents,r.existingOutstandingCardInvoicesCents],[20000,60000]);
- assert.equal(r.conservative.endingCashCents,40000);
- assert.equal(r.conservative.endingFreeMarginCents,40000);
- for(const date of new Set(p.installments.map(x=>x.dueOn))){
-  assert.ok(at(r,date),'card invoice due date should be scheduled once');
+ assert.equal(r.conservative.endingCashCents,70000,'January installment is outside the November–December horizon');
+ assert.equal(r.conservative.endingFreeMarginCents,40000,'January debt remains an outstanding burden on free margin');
+ for(const date of new Set(p.installments.map(x=>x.dueOn).filter(d=>d<=to))){
+  assert.ok(at(r,date),'card invoice due date inside the window is scheduled once');
  }
+ assert.equal(r.points.reduce((a,x)=>a+x.outstandingPaymentsCents,0),50000,
+  'only November debt and December installment cause hypothetical outflow within the horizon');
  assert.equal((await getPlanningSummary(db,A)).cardInvoicesCents,60000);
  assert.equal((await getDashboard(db,A,{from,to})).cashFlow.expensesCents,0);
 }));
@@ -254,8 +256,8 @@ test('F2 simulation never mutates dashboard, timeline, exports, obligations, int
  const opts={from,to,asOf:from,status:'all'};
  const before={dashboard:await getDashboard(db,A,{from,to}),
   timeline:await readExportTimeline(db,A,opts),
-  pdf:await makeReport(db,A,{...opts,format:'pdf'}),
-  xlsx:await makeReport(db,A,{...opts,format:'xlsx'}),
+  pdfRows:(await makeReport(db,A,{...opts,format:'pdf'})).rows,
+  xlsxRows:(await makeReport(db,A,{...opts,format:'xlsx'})).rows,
   summary:await getPlanningSummary(db,A),
   movements:db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,
   debts:db.raw.prepare('SELECT COUNT(*) n FROM financial_obligations').get().n,
@@ -265,8 +267,8 @@ test('F2 simulation never mutates dashboard, timeline, exports, obligations, int
  await simulatePlanning(db,A,input());
  const after={dashboard:await getDashboard(db,A,{from,to}),
   timeline:await readExportTimeline(db,A,opts),
-  pdf:await makeReport(db,A,{...opts,format:'pdf'}),
-  xlsx:await makeReport(db,A,{...opts,format:'xlsx'}),
+  pdfRows:(await makeReport(db,A,{...opts,format:'pdf'})).rows,
+  xlsxRows:(await makeReport(db,A,{...opts,format:'xlsx'})).rows,
   summary:await getPlanningSummary(db,A),
   movements:db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,
   debts:db.raw.prepare('SELECT COUNT(*) n FROM financial_obligations').get().n,
