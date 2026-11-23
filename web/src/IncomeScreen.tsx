@@ -11,7 +11,7 @@ type Source={
 type Item={
  sourceId:string;sourceName:string;occurrenceKey:string;kind:'manual'|'scheduled';
  originalOn:string;currentOn:string;expectedCents:number;receivedCents:number;
- remainingCents:number;state:'planned'|'confirmed'|'delayed'|'canceled';
+ remainingCents:number;differenceCents:number;state:'planned'|'confirmed'|'delayed'|'canceled';
 };
 type Calendar={basis:string;expectations:Item[];totals:{expectedCents:number;receivedCents:number;remainingCents:number}};
 type Move={movementId:string;amountCents:number;occurredOn:string;description:string};
@@ -200,7 +200,10 @@ export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
   {chosen&&endpoint&&<section className="credit-panel" aria-label="Detalhe da expectativa">
    <h3>Detalhe — {chosen.sourceName}</h3>
    <p>{chosen.currentOn} · {types[chosen.state]} · Valor previsto: {money(chosen.expectedCents)}</p>
-   <p className="small-note">Recebido: {money(chosen.receivedCents)} · Ainda não vinculado: {money(chosen.remainingCents)}. Confirmar a expectativa não movimenta dinheiro.</p>
+   <p className="small-note">Recebido: {money(chosen.receivedCents)} · Diferença (recebido − previsto): {money(chosen.differenceCents)}.
+    {chosen.state==='canceled'?' Previsão cancelada: nenhum valor restante é automaticamente exigível.':
+      ' Valor previsto ainda não recebido: '+money(chosen.remainingCents)+'.'}
+    Confirmar a expectativa não movimenta dinheiro.</p>
    {chosen.originalOn!==chosen.currentOn&&<p className="small-note">Data original preservada: {chosen.originalOn}</p>}
    {chosen.state!=='canceled'&&<form className="credit-form" aria-label="Alterar expectativa" onSubmit={updateState}><fieldset className="work-fieldset" disabled={busy}>
     <label>Situação<select value={event.state} onChange={e=>{keys.current.event=crypto.randomUUID();setEvent(v=>({...v,state:e.target.value}));}}>

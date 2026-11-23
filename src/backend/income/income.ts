@@ -21,7 +21,7 @@ export interface Source {
 export interface Expectation {
  sourceId:string;sourceName:string;occurrenceKey:string;kind:'scheduled'|'manual';
  originalOn:string;currentOn:string;expectedCents:number;receivedCents:number;
- remainingCents:number;state:ExpectedState;
+ remainingCents:number;differenceCents:number;state:ExpectedState;
 }
 export interface Calendar {
  from:string;to:string;expectations:Expectation[];
@@ -119,7 +119,8 @@ function makeExpectation(s:Source,r:ExpectRow):Expectation{
  const expected=amount(r.expected_cents),remaining=Math.max(0,expected-r.received_cents);
  return {sourceId:s.sourceId,sourceName:s.name,occurrenceKey:r.occurrence_key,
   kind:r.kind,originalOn:r.original_on,currentOn:r.current_on,state:r.state,
-  expectedCents:expected,receivedCents:r.received_cents,remainingCents:remaining};
+  expectedCents:expected,receivedCents:r.received_cents,remainingCents:remaining,
+  differenceCents:r.received_cents-expected};
 }
 function verifySource(input:SourceInput){
  if(!input||typeof input!=='object')throw new TypeError('Invalid source');

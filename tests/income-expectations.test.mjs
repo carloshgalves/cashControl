@@ -273,3 +273,19 @@ test('E2 SQL rejects any receipt link pushing an occurrence beyond exact safe ce
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM income_receipt_links').get().n,1000);
  assert.equal(db.raw.prepare('SELECT received_cents FROM income_expectation_totals').get().received_cents,9000000000000000);
 }));
+
+
+test('E2 over-receipt stays visibly above expectation; cancellation never implies collectible debt',()=>using(async db=>{
+ const s=await createSource(db,actor('alice'),freelance(),clock);
+ const occ=await createManualExpectation(db,actor('alice'),s.sourceId,{
+  idempotencyKey:key('small'),expectedOn:'2026-11-20',amountCents:5000,
+ },clock);
+ const a=await account(db),m=await income(db,a,'higher income',7000);
+ await linkIncomeReceipt(db,actor('alice'),s.sourceId,occ,{idempotencyKey:key('higher'),movementId:m.movementId},clock);
+ let e=(await listCalendar(db,actor('alice'),'2026-11-01','2026-11-30')).expectations[0];
+ assert.deepEqual([e.expectedCents,e.receivedCents,e.remainingCents,e.differenceCents],[5000,7000,0,2000]);
+ await changeExpectation(db,actor('alice'),s.sourceId,occ,{idempotencyKey:key('cancel-higher'),state:'canceled'},clock);
+ e=(await listCalendar(db,actor('alice'),'2026-11-01','2026-11-30')).expectations[0];
+ assert.deepEqual([e.state,e.receivedCents,e.differenceCents],['canceled',7000,2000]);
+ assert.equal((await getDashboard(db,actor('alice'),period)).cashFlow.incomeCents,7000);
+}));
