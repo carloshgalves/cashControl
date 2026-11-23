@@ -187,8 +187,8 @@ test('E3 immutable SQL history defeats UPDATE, DELETE and INSERT OR REPLACE with
  assert.throws(()=>db.raw.exec('DELETE FROM salary_period_statements'),/SALARY_IMMUTABLE/);
  const sql='INSERT OR REPLACE INTO salary_base_revisions(owner_user_id,source_id,creation_key,effective_on,net_cents,reason,created_at) VALUES(?,?,?,?,?,?,?)';
  assert.throws(()=>db.raw.prepare(sql).run('alice',s.sourceId,key('rewrite'),'2026-11-01',280000,'Permanente',clock().toISOString()),/SALARY_REVISION_INVALID/);
- const sql2='INSERT OR REPLACE INTO salary_period_statements(owner_user_id,source_id,occurrence_key,creation_key,net_cents,discounts_json,components_json,created_at) VALUES(?,?,?,?,?,?,?,?)';
- assert.throws(()=>db.raw.prepare(sql2).run('alice',s.sourceId,'scheduled_2026-11-30',key('nov'),250000,'[]','[]',clock().toISOString()),/SALARY_STATEMENT_INVALID/);
+ const sql2='INSERT OR REPLACE INTO salary_period_statements(owner_user_id,source_id,occurrence_key,creation_key,net_cents,base_net_at_entry_cents,discounts_json,components_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)';
+ assert.throws(()=>db.raw.prepare(sql2).run('alice',s.sourceId,'scheduled_2026-11-30',key('nov'),250000,250000,'[]','[]',clock().toISOString()),/SALARY_STATEMENT_INVALID/);
 }));
 const BASE='http://127.0.0.1:8787',now=Date.parse('2026-11-11T13:00:00Z');
 const session=async headers=>{const c=headers.get('cookie'),user=c==='u=alice'?'alice':c==='u=bob'?'bob':null;
@@ -219,4 +219,37 @@ test('E3 HTTP: Better Auth, Origin, allowlist, exact decimal, gross empty, pendi
  assert.equal(v.netCents,300000);assert.equal(v.grossStatus,'not_provided');
  assert.equal((await http(db,statementPath,'bob','POST',{idempotencyKey:key('steal'),net:'1.00',gross:null,discounts:[],components:[]})).status,404);
  assert.equal((await http(db,statementPath,'alice','POST',{idempotencyKey:key('bad'),net:'NaN',discounts:[],components:[]})).status,400);
+}));
+
+
+test('E3 historical salary statement retains its original base snapshot after later effective-dated salary raise',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),source(),clock),occ='scheduled_2026-11-30';
+ const recorded=await createStatement(db,actor('alice'),src.sourceId,occ,{
+  idempotencyKey:key('salary-before-raise'),netCents:275000,grossCents:null,discounts:[],
+  components:[{kind:'overtime',reason:'Extra pontual',amountCents:25000}],
+ },clock);
+ assert.equal(recorded.baseNetCents,250000);
+ assert.equal(recorded.componentsDifferenceCents,0);
+ await createRevision(db,actor('alice'),src.sourceId,revision(),clock);
+ const now=await getStatement(db,actor('alice'),src.sourceId,occ);
+ assert.deepEqual([now.baseNetCents,now.componentsDifferenceCents],[250000,0],
+  'subsequent salary raise cannot retroactively re-interpret a statement');
+ const replay=await createStatement(db,actor('alice'),src.sourceId,occ,{
+  idempotencyKey:key('salary-before-raise'),netCents:275000,grossCents:null,discounts:[],
+  components:[{kind:'overtime',reason:'Extra pontual',amountCents:25000}],
+ },clock);
+ assert.deepEqual(replay,now);
+ const cal=await calendar(db);
+ assert.deepEqual(cal.expectations.map(e=>e.expectedCents),[275000,275000]);
+ assert.equal(db.raw.prepare('SELECT base_net_at_entry_cents FROM salary_period_statements').get().base_net_at_entry_cents,250000);
+}));
+
+test('E3 SQL refuses fabricated base-at-entry snapshots even if occurrence is valid',()=>using(async db=>{
+ const src=await createSource(db,actor('alice'),source(),clock);
+ await changeExpectation(db,actor('alice'),src.sourceId,'scheduled_2026-11-30',{
+  idempotencyKey:key('confirm-forgery'),state:'confirmed',
+ },clock);
+ const sql='INSERT INTO salary_period_statements(owner_user_id,source_id,occurrence_key,creation_key,net_cents,base_net_at_entry_cents,discounts_json,components_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)';
+ assert.throws(()=>db.raw.prepare(sql).run('alice',src.sourceId,'scheduled_2026-11-30',key('fake-base'),275000,1,'[]','[]',clock().toISOString()),/SALARY_STATEMENT_INVALID/);
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM salary_period_statements').get().n,0);
 }));

@@ -30,7 +30,7 @@ interface RevisionRow{
 }
 interface StatementRow{
  statement_seq:number;owner_user_id:string;source_id:string;occurrence_key:string;creation_key:string;
- net_cents:number;gross_cents:number|null;discounts_json:string;components_json:string;created_at:string;
+ net_cents:number;base_net_at_entry_cents:number;gross_cents:number|null;discounts_json:string;components_json:string;created_at:string;
 }
 const authorized=(actor:AuthenticatedActor)=>{
  if(!actor||typeof actor.userId!=='string'||!actor.userId.trim()||actor.userId.length>128)
@@ -126,7 +126,8 @@ export async function createRevision(db:FinancialDatabase,actor:AuthenticatedAct
  }
  return (await replay())!;
 }
-function view(row:StatementRow,base:number):StatementView{
+function view(row:StatementRow):StatementView{
+ const base=row.base_net_at_entry_cents;
  const discounts=JSON.parse(row.discounts_json) as PayDeduction[];
  const components=JSON.parse(row.components_json) as PayComponent[];
  const deductions=num(discounts.reduce((a,d)=>a+BigInt(d.amountCents),0n));
@@ -156,16 +157,14 @@ export async function getStatement(db:FinancialDatabase,actor:AuthenticatedActor
  ensureSource(base.s);
  const row=await getStatementRow(db,authorized(actor),sourceId,occ);
  if(!row)return null;
- const amountBase=base.kind==='scheduled'?await calculateBase(db,actor,sourceId,base.originalOn):base.amount;
- return view(row,amountBase);
+ return view(row);
 }
 export async function listStatements(db:FinancialDatabase,actor:AuthenticatedActor,sourceId:string,occ:string,limit=25,offset=0){
  const base=await checkOccurrence(db,actor,sourceId,occ);ensureSource(base.s);
  if(!Number.isInteger(limit)||limit<1||limit>100||!Number.isInteger(offset)||offset<0||offset>100000)throw new TypeError('Invalid pagination');
  const rows=await db.prepare('SELECT * FROM salary_period_statements WHERE owner_user_id=? AND source_id=? AND occurrence_key=? ORDER BY statement_seq DESC LIMIT ? OFFSET ?')
   .bind(authorized(actor),sourceId,occ,limit,offset).all<StatementRow>();
- const amountBase=base.kind==='scheduled'?await calculateBase(db,actor,sourceId,base.originalOn):base.amount;
- return rows.results.map(r=>view(r,amountBase));
+ return rows.results.map(view);
 }
 export async function createStatement(db:FinancialDatabase,actor:AuthenticatedActor,sourceId:string,occ:string,
  input:StatementInput,clock=()=>new Date()):Promise<StatementView>{
@@ -177,18 +176,18 @@ export async function createStatement(db:FinancialDatabase,actor:AuthenticatedAc
   if(!row)return null;
   if(row.source_id!==sourceId||row.occurrence_key!==occ||row.net_cents!==data.net||row.gross_cents!==data.gross||
    row.discounts_json!==data.discountsJson||row.components_json!==data.componentsJson)throw new SalaryConflict();
-  const baseNet=base.kind==='scheduled'?await calculateBase(db,actor,sourceId,base.originalOn):base.amount;
-  return view(row,baseNet);
+  return view(row);
  };
  const old=await replay();if(old)return old;
+ const originalBase=base.kind==='scheduled'?await calculateBase(db,actor,sourceId,base.originalOn):base.amount;
  // If the occurrence is still virtual, materialize the ORIGINAL E2 salary
  // snapshot atomically with this new statement. The latest salary base is
  // calculated by overlay when reading, without rewriting historical E2 rows.
  const existing=await db.prepare('SELECT state FROM income_expectation_totals WHERE owner_user_id=? AND source_id=? AND occurrence_key=?')
   .bind(who,sourceId,occ).first<{state:string}>();
  if(existing?.state==='canceled')throw new SalaryConflict();
- const insert=db.prepare('INSERT INTO salary_period_statements(owner_user_id,source_id,occurrence_key,creation_key,net_cents,gross_cents,discounts_json,components_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)')
-  .bind(who,sourceId,occ,input.idempotencyKey,data.net,data.gross,data.discountsJson,data.componentsJson,clock().toISOString());
+ const insert=db.prepare('INSERT INTO salary_period_statements(owner_user_id,source_id,occurrence_key,creation_key,net_cents,base_net_at_entry_cents,gross_cents,discounts_json,components_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+  .bind(who,sourceId,occ,input.idempotencyKey,data.net,originalBase,data.gross,data.discountsJson,data.componentsJson,clock().toISOString());
  try{
   if(base.kind==='scheduled'&&!existing)await db.batch([ensureRow(db,who,sourceId,occ,base.originalOn,base.amount),insert]);
   else await insert.run();
