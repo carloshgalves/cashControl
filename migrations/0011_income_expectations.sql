@@ -35,7 +35,7 @@ CREATE TABLE income_expectations (
 );
 CREATE INDEX income_expectations_on ON income_expectations(owner_user_id,original_on,source_id);
 CREATE TABLE income_expectation_events (
- seq INTEGER PRIMARY KEY AUTOINCREMENT,
+ seq INTEGER PRIMARY KEY AUTOINCREMENT CHECK(seq>0),
  owner_user_id TEXT NOT NULL, source_id TEXT NOT NULL, occurrence_key TEXT NOT NULL,
  creation_key TEXT NOT NULL,
  state TEXT NOT NULL CHECK(state IN ('confirmed','delayed','canceled')),
@@ -51,6 +51,9 @@ CREATE TRIGGER income_event_guard BEFORE INSERT ON income_expectation_events BEG
  OR NOT EXISTS(SELECT 1 FROM income_expectations e WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key)
  OR EXISTS(SELECT 1 FROM income_expectation_events e WHERE e.owner_user_id=NEW.owner_user_id AND e.creation_key=NEW.creation_key)
  OR COALESCE((SELECT state FROM income_expectation_events e WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key ORDER BY seq DESC LIMIT 1),'planned')='canceled'
+ OR (NEW.state='confirmed' AND COALESCE((SELECT state FROM income_expectation_events e
+  WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id
+   AND e.occurrence_key=NEW.occurrence_key ORDER BY seq DESC LIMIT 1),'planned')='confirmed')
  OR (NEW.state='delayed' AND NEW.expected_on<=COALESCE((SELECT expected_on FROM income_expectation_events e WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key ORDER BY seq DESC LIMIT 1),(SELECT original_on FROM income_expectations e WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key)))
  OR (NEW.state<>'delayed' AND NEW.expected_on<>COALESCE((SELECT expected_on FROM income_expectation_events e WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key ORDER BY seq DESC LIMIT 1),(SELECT original_on FROM income_expectations e WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key)));
 END;
@@ -108,4 +111,31 @@ CREATE TRIGGER income_receipt_safe_total BEFORE INSERT ON income_receipt_links B
  (SELECT m.amount_cents FROM posted_cash_movements m WHERE m.owner_user_id=NEW.owner_user_id AND m.movement_id=NEW.movement_id)
  > 9007199254740991-COALESCE((SELECT e.received_cents FROM income_expectation_totals e
   WHERE e.owner_user_id=NEW.owner_user_id AND e.source_id=NEW.source_id AND e.occurrence_key=NEW.occurrence_key),0);
+END;
+
+-- Reject forged scheduled rows in the persistence layer, not only in the API.
+-- A recurrence is an explicit user-fixed NET amount, not an inferred average.
+CREATE TRIGGER income_scheduled_guard BEFORE INSERT ON income_expectations
+WHEN NEW.kind='scheduled'
+BEGIN
+ SELECT RAISE(ABORT,'INCOME_SCHEDULE_INVALID')
+ WHERE NOT EXISTS (
+  SELECT 1 FROM income_sources s
+  WHERE s.owner_user_id=NEW.owner_user_id AND s.source_id=NEW.source_id
+   AND s.pay_kind IN ('fixed','mixed') AND s.fixed_net_cents>0
+   AND NEW.expected_cents=s.fixed_net_cents AND s.periodicity<>'none'
+   AND NEW.original_on>=s.anchor_on AND (s.end_on IS NULL OR NEW.original_on<=s.end_on)
+   AND (
+    (s.periodicity='weekly'
+      AND CAST(julianday(NEW.original_on)-julianday(s.anchor_on) AS INTEGER)%7=0)
+    OR (s.periodicity='fortnightly'
+      AND CAST(julianday(NEW.original_on)-julianday(s.anchor_on) AS INTEGER)%14=0)
+    OR (s.periodicity='custom'
+      AND CAST(julianday(NEW.original_on)-julianday(s.anchor_on) AS INTEGER)%s.interval_days=0)
+    OR (s.periodicity='monthly'
+      AND CAST(substr(NEW.original_on,9,2) AS INTEGER)=
+        MIN(CAST(substr(s.anchor_on,9,2) AS INTEGER),
+          CAST(strftime('%d',date(NEW.original_on,'start of month','+1 month','-1 day')) AS INTEGER)))
+   )
+ );
 END;
