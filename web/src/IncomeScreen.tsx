@@ -34,8 +34,8 @@ function parseForecast(raw:string):string|null{
  const cents=BigInt(normalized.replace('.',''));
  return cents<=9000000000000n?normalized:null;
 }
-export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
- month:string;onUnauthorized:()=>void;onRecordIncome:()=>void;refreshKey:number;
+export function IncomeScreen({month,onUnauthorized,onRecordIncome,onFinancialChange,refreshKey}:{
+ month:string;onUnauthorized:()=>void;onRecordIncome:()=>void;onFinancialChange:()=>void;refreshKey:number;
 }){
  const [sources,setSources]=useState<Source[]>([]);
  const [calendar,setCalendar]=useState<Calendar|null>(null);
@@ -236,7 +236,7 @@ export function IncomeScreen({month,onUnauthorized,onRecordIncome,refreshKey}:{
    <PayrollPanel key={salarySourceId+'|'+(chosen?.sourceId===salarySourceId?chosen.occurrenceKey:'none')}
     source={sources.find(s=>s.sourceId===salarySourceId)!}
     occurrenceKey={chosen?.sourceId===salarySourceId?chosen.occurrenceKey:null}
-    onChanged={()=>setRevision(x=>x+1)} onUnauthorized={onUnauthorized}/>}
+    onChanged={()=>{setRevision(x=>x+1);onFinancialChange();}} onUnauthorized={onUnauthorized}/>}
   </>}
  </section>;
 }

@@ -439,6 +439,7 @@ export function App() {
       {error && <section role="alert" className="error-panel"><strong>Não foi possível mostrar informações confiáveis.</strong><p>{error}</p>
         <button className="outline-btn" onClick={()=>setRefreshKey(x=>x+1)}>Tentar novamente</button></section>}
       {view==='income' && <IncomeScreen key={session.user.id} month={month} refreshKey={refreshKey}
+        onFinancialChange={()=>setRefreshKey(x=>x+1)}
         onUnauthorized={invalidateSession} onRecordIncome={()=>setModal({mode:accounts.length?'income':'account'})}/>}
       {view==='works' && <WorkScreen key={session.user.id} refreshKey={refreshKey} canRegisterMovement={!!data&&!loading&&!error}
         onUnauthorized={invalidateSession} onNewMovement={direction=>setModal({mode:accounts.length?direction:'account'})}/>}
