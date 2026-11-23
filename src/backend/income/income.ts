@@ -1,4 +1,5 @@
 import type {AuthenticatedActor,FinancialDatabase} from '../accounts/accounts.ts';
+import {loadPayrollOverlay,baseForDate} from '../payroll/payroll.ts';
 import {assertCents} from '../../domain/money.ts';
 import {validateDate} from '../timeline/timeline.ts';
 import {getMovement} from '../movements/movements.ts';
@@ -116,9 +117,9 @@ function generate(s:Source,from:string,to:string):string[]{
  }
  return out;
 }
-function makeExpectation(s:Source,r:ExpectRow):Expectation{
+function makeExpectation(s:Source,r:ExpectRow,override?:number):Expectation{
  if(!Number.isSafeInteger(r.received_cents)||r.received_cents<0)throw new IncomeTooLarge();
- const expected=amount(r.expected_cents),remaining=Math.max(0,expected-r.received_cents);
+ const expected=amount(override??r.expected_cents),remaining=Math.max(0,expected-r.received_cents);
  return {sourceId:s.sourceId,sourceName:s.name,occurrenceKey:r.occurrence_key,
   kind:r.kind,originalOn:r.original_on,currentOn:r.current_on,state:r.state,
   expectedCents:expected,receivedCents:r.received_cents,remainingCents:remaining,
@@ -185,7 +186,7 @@ async function currentExpectation(db:FinancialDatabase,who:string,src:Source,occ
  if(!row)throw new Error('Committed income expectation not readable');
  return makeExpectation(src,row);
 }
-async function checkOccurrence(db:FinancialDatabase,a:AuthenticatedActor,sourceId:string,occ:string){
+export async function checkOccurrence(db:FinancialDatabase,a:AuthenticatedActor,sourceId:string,occ:string){
  const s=await getSource(db,a,sourceId);
  occurrence(occ);
  if(occ.startsWith('scheduled_')){
@@ -197,7 +198,7 @@ async function checkOccurrence(db:FinancialDatabase,a:AuthenticatedActor,sourceI
  if(!row||row.kind!=='manual')throw new IncomeNotFound();
  return {s,kind:'manual' as const,originalOn:row.original_on,amount:row.expected_cents};
 }
-function ensureRow(db:FinancialDatabase,who:string,sourceId:string,occ:string,day:string,amountCents:number){
+export function ensureRow(db:FinancialDatabase,who:string,sourceId:string,occ:string,day:string,amountCents:number){
  // A statement that inserts zero rows on existing expectations; it is safe
  // under D1 batch serialization and doesn't use REPLACE/IGNORE on history.
  return db.prepare([
@@ -232,6 +233,15 @@ export async function listCalendar(db:FinancialDatabase,a:AuthenticatedActor,fro
   .bind(who).all<SourceRow>();
  if(all.results.length>500)throw new IncomeTooLarge();
  const sources=all.results.map(asSource),byId=new Map(sources.map(s=>[s.sourceId,s]));
+ const payroll=await loadPayrollOverlay(db,a,from,to);
+ const override=(s:Source,row:ExpectRow):number|undefined=>{
+  const statement=payroll.statements.get(s.sourceId+'|'+row.occurrence_key);
+  if(statement!==undefined)return statement;
+  if(row.kind==='manual')return undefined;
+  // Effective salary changes use ORIGINAL competence, not postponed deposit date.
+  const versions=payroll.revisions.get(s.sourceId)??[];
+  return versions.length?baseForDate(s.fixedNetCents,row.original_on,versions):undefined;
+ };
  const rows=await db.prepare(
   'SELECT * FROM income_expectation_totals WHERE owner_user_id=? AND (original_on BETWEEN ? AND ? OR current_on BETWEEN ? AND ?) ORDER BY source_id,original_on,occurrence_key LIMIT 2001'
  ).bind(who,from,to,from,to).all<ExpectRow>();
@@ -243,10 +253,11 @@ export async function listCalendar(db:FinancialDatabase,a:AuthenticatedActor,fro
   for(const day of generate(s,from,to)){
    const key='scheduled_'+day,r=state.get(s.sourceId+'|'+key);
    if(r){
-    if(r.current_on>=from&&r.current_on<=to)result.push(makeExpectation(s,r));
+    if(r.current_on>=from&&r.current_on<=to)result.push(makeExpectation(s,r,override(s,r)));
    }else{
-    result.push(makeExpectation(s,{source_id:s.sourceId,occurrence_key:key,original_on:day,current_on:day,
-     expected_cents:s.fixedNetCents!,received_cents:0,kind:'scheduled',state:'planned',created_at:''}));
+    const row={source_id:s.sourceId,occurrence_key:key,original_on:day,current_on:day,
+     expected_cents:s.fixedNetCents!,received_cents:0,kind:'scheduled' as const,state:'planned' as const,created_at:''};
+    result.push(makeExpectation(s,row,override(s,row)));
    }
    if(result.length>2000)throw new IncomeTooLarge();
   }
@@ -254,7 +265,7 @@ export async function listCalendar(db:FinancialDatabase,a:AuthenticatedActor,fro
  for(const row of rows.results){
   const s=byId.get(row.source_id);
   if(!s||row.current_on<from||row.current_on>to)continue;
-  if(row.kind==='manual'||row.original_on<from||row.original_on>to)result.push(makeExpectation(s,row));
+  if(row.kind==='manual'||row.original_on<from||row.original_on>to)result.push(makeExpectation(s,row,override(s,row)));
   if(result.length>2000)throw new IncomeTooLarge();
  }
  result.sort((x,y)=>x.currentOn.localeCompare(y.currentOn)||x.sourceId.localeCompare(y.sourceId)||x.occurrenceKey.localeCompare(y.occurrenceKey));
