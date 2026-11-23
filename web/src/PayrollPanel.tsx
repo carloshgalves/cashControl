@@ -156,6 +156,10 @@ export function PayrollPanel({source,occurrenceKey,onChanged,onUnauthorized}:{
        <b>{money(c.amountCents)}</b>
      </div>)}
    </div>}
+   {latest&&latest.componentsDifferenceCents!==0&&<p role="status" className="credit-reconcile-pending">
+     Diferença entre líquido da competência e salário-base com os componentes pontuais declarados:
+     {money(latest.componentsDifferenceCents)}. Confira os adicionais ou reduções informados; o sistema não ajustará os valores automaticamente.
+   </p>}
    {latest?.grossStatus==='pending'&&<p role="status" className="credit-reconcile-pending">
       Divergência de conciliação pendente: o bruto menos os descontos discriminados não corresponde ao líquido informado. Nenhum ajuste ou retenção será criado automaticamente.
    </p>}
