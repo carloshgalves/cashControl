@@ -7,7 +7,7 @@ type State='planning'|'reserved'|'converted'|'excluded';
 type Action='reserve'|'plan'|'exclude'|'convert';
 type Intention={
  intentionId:string;title:string;description:string|null;amountCents:number;plannedOn:string;
- state:State;reservedCents:number;obligationId:string|null;createdAt:string;
+ state:State;reservedCents:number;obligationId:string|null;conversionDueOn:string|null;createdAt:string;
 };
 type Event={eventId:string;intentionId:string;action:Action;reservedCents:number;obligationId:string|null;createdAt:string};
 type Summary={
@@ -31,6 +31,7 @@ export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
  const [selected,setSelected]=useState<string|null>(null);
  const [draft,setDraft]=useState(blank),[createOpen,setCreateOpen]=useState(false);
  const [reserveValue,setReserveValue]=useState('');
+ const [conversionDueOn,setConversionDueOn]=useState('');
  const [confirmed,setConfirmed]=useState(false);
  const [loading,setLoading]=useState(true),[ready,setReady]=useState(false),[busy,setBusy]=useState(false);
  const [error,setError]=useState(''),[revision,setRevision]=useState(0);
@@ -90,16 +91,18 @@ export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
  }
  function choose(i:Intention){
   setSelected(i.intentionId);setReserveValue((i.reservedCents>0?i.reservedCents:i.amountCents)/100+'');
+  setConversionDueOn(i.plannedOn);
   setConfirmed(false);keys.current.action=crypto.randomUUID();
  }
  async function transition(action:Action){
   if(!current||!usable)return;
   const amount=action==='reserve'?parse(reserveValue):null;
   if(action==='reserve'&&(!amount||amount==='0.00')){setError('Informe uma reserva virtual positiva.');return;}
-  if(action==='convert'&&!confirmed){setError('Confirme a intenção de assumir a obrigação.');return;}
+  if(action==='convert'&&(!confirmed||!conversionDueOn)){setError('Informe o vencimento e confirme a compra.');return;}
   await commit('/api/intentions/'+current.intentionId+'/events',{
    idempotencyKey:keys.current.action,action,
    ...(amount?{reserveAmount:amount}:{}),
+   ...(action==='convert'?{dueOn:conversionDueOn}:{}),
   },()=>{
    keys.current.action=crypto.randomUUID();setConfirmed(false);
    setReserveValue('');
@@ -163,11 +166,14 @@ export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
      </div>
      <div className="planning-conversion">
       <h4>Concretizar compra</h4>
-      <p>A compra assumirá uma obrigação de {money(current.amountCents)} com vencimento em {current.plannedOn}.
-       A reserva virtual será removida no mesmo registro, sem lançar pagamento nem alterar saldo bancário.</p>
+      <p>A compra assumirá uma obrigação de {money(current.amountCents)}. A data desejada para comprar
+       ({current.plannedOn}) não determina automaticamente o vencimento. A reserva virtual será removida
+       no mesmo registro, sem lançar pagamento nem alterar saldo bancário.</p>
+      <label>Vencimento da obrigação<input type="date" required disabled={!usable}
+        value={conversionDueOn} onChange={e=>{setConversionDueOn(e.target.value);setConfirmed(false);keys.current.action=crypto.randomUUID();}}/></label>
       <label><input type="checkbox" disabled={!usable} checked={confirmed} onChange={e=>{setConfirmed(e.target.checked);keys.current.action=crypto.randomUUID();}}/>
        Confirmo que a compra foi concretizada e quero registrar o compromisso.</label>
-      <button type="button" className="primary-btn" disabled={!usable||!confirmed}
+      <button type="button" className="primary-btn" disabled={!usable||!confirmed||!conversionDueOn}
        onClick={()=>transition('convert')}>Converter em obrigação sem duplicar reserva</button>
      </div>
      <button type="button" className="text-btn" disabled={!usable} onClick={()=>transition('exclude')}>
@@ -178,6 +184,7 @@ export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
     {events.map(e=><div className="planning-event" key={e.eventId}>
       <span>{actions[e.action]}</span><small>{new Date(e.createdAt).toLocaleString('pt-BR')}</small>
       {e.action==='reserve'&&<strong>{money(e.reservedCents)}</strong>}
+      {e.action==='convert'&&e.conversionDueOn&&<small>Vencimento assumido: {e.conversionDueOn}</small>}
     </div>)}
    </section>}
   </div>}
