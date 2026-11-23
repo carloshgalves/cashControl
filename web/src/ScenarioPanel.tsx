@@ -16,7 +16,7 @@ type Point={
 type ScenarioReport={
  from:string;to:string;openingRealCashCents:number;existingOutstandingObligationsCents:number;
  existingOutstandingCardInvoicesCents:number;activeVirtualReserveCents:number;
- unreceivedExplicitIncomeCents:number;unreceivedSources:Income[];
+ unreceivedExplicitIncomeCents:number;unreceivedSources:Income[];unlinkedRealIncomeCount:number;
  hypothetical:{amountCents:number;purchaseOn:string;dueOn:string;intentionId:string|null;replacedExistingReserveCents:number}|null;
  conservative:{endingCashCents:number;endingFreeMarginCents:number;lowestCashCents:number;lowestMarginCents:number};
  planned:{endingCashCents:number;endingFreeMarginCents:number;lowestCashCents:number;lowestMarginCents:number};
@@ -157,6 +157,11 @@ export function ScenarioPanel({intentions,refreshKey,onUnauthorized}:{
    {result.unreceivedExplicitIncomeCents>0&&
     <p className="scenario-warning">O cenário planejado adiciona {money(result.unreceivedExplicitIncomeCents)}
      em valores explicitamente esperados, ainda não recebidos integralmente. Não são saldo bancário.</p>}
+   {result.unreceivedExplicitIncomeCents>0&&result.unlinkedRealIncomeCount>0&&
+    <p role="status" className="scenario-warning">Há {result.unlinkedRealIncomeCount} entrada(s) bancária(s) já
+     registradas sem vínculo a expectativas. Se alguma corresponder aos valores ainda esperados,
+     o cenário planejado pode superestimar o saldo. Vincule os recebimentos corretos na seção Rendas;
+     não realizamos associações automáticas por suposição.</p>}
    <div className="scenario-table-wrap">
     <table className="scenario-table">
      <caption>Projeção por data · não é extrato bancário</caption>
