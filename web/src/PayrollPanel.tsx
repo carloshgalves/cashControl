@@ -30,6 +30,7 @@ export function PayrollPanel({source,occurrenceKey,onChanged,onUnauthorized}:{
  const [localRevision,setLocalRevision]=useState(0);
  const keys=useRef({rev:crypto.randomUUID(),statement:crypto.randomUUID()});
  const usable=ready&&!loading&&!busy;
+ const canRaise=source.fixedNetCents!==null&&source.fixedNetCents>0&&source.periodicity!=='none';
  function fail(e:unknown){
   if(e instanceof ApiError&&e.status===401){onUnauthorized();return;}
   setError(e instanceof ApiError&&e.status===409?'Conflito: a vigência ou o registro já existe, ou o histórico foi alterado. Confira as informações.':
@@ -72,7 +73,7 @@ export function PayrollPanel({source,occurrenceKey,onChanged,onUnauthorized}:{
    });
  }
  function editNet(k:'net'|'gross',v:string){
-  keys.current.statement=crypto.randomUUID();setForm(s=>({...s,[k]:v}));
+  keys.current.statement=crypto.randomUUID();setForm(s=>({...s,[k]:v,...(k==='gross'&&!v.trim()?{discounts:[]}: {})}));
  }
  function editDiscount(i:number,k:keyof Discount,v:string){
   keys.current.statement=crypto.randomUUID();setForm(s=>({...s,discounts:s.discounts.map((d,j)=>j===i?{...d,[k]:v}:d)}));
@@ -107,8 +108,9 @@ export function PayrollPanel({source,occurrenceKey,onChanged,onUnauthorized}:{
  return <section className="credit-panel payroll-panel" aria-label={'Remuneração de '+source.name}>
   <div className="credit-toolbar"><div><h3>Remuneração — {source.name}</h3>
    <p className="small-note">Salário líquido é a referência. Revisões com vigência alteram expectativas futuras, sem modificar caixa nem apagar competências passadas.</p></div>
-   <button type="button" className="outline-btn" disabled={!usable} onClick={()=>setRevOpen(x=>!x)}>Registrar reajuste</button></div>
+   <button type="button" className="outline-btn" disabled={!usable||!canRaise} onClick={()=>setRevOpen(x=>!x)}>Registrar reajuste</button></div>
   {error&&<p role="alert" className="form-error">{error}</p>}
+  {!canRaise&&<p className="small-note">Não há parcela fixa líquida recorrente positiva nesta fonte. O reajuste exige salário-base e periodicidade informados.</p>}
   {loading&&<p role="status">Carregando composição salarial…</p>}
   {!loading&&!ready&&<button className="outline-btn" onClick={()=>setLocalRevision(x=>x+1)}>Tentar novamente</button>}
   {revOpen&&<form className="credit-form" aria-label="Reajuste salarial" onSubmit={saveRevision}>
@@ -140,6 +142,20 @@ export function PayrollPanel({source,occurrenceKey,onChanged,onUnauthorized}:{
      <span>Componentes pontuais<strong>{money(latest.componentsTotalCents)}</strong></span>
      <span>Diferença do líquido versus base + componentes<strong>{money(latest.componentsDifferenceCents)}</strong></span>
    </div>:<p className="small-note">Nenhum demonstrativo cadastrado para esta competência. O valor-base recorrente continua sendo uma expectativa.</p>}
+   {latest&&<div className="payroll-itemization" aria-label="Composição discriminada mais recente">
+     <h4>Descontos discriminados</h4>
+     {!latest.discounts.length&&<p className="small-note">Nenhum desconto discriminado nesta versão.</p>}
+     {latest.discounts.map((d,i)=><div className="credit-installment" key={'deduction-'+i}>
+       <span><strong>{d.label}</strong><small>Valor informado como retenção em folha; não gera nova despesa bancária</small></span>
+       <b>{money(d.amountCents)}</b>
+     </div>)}
+     <h4>Adicionais e reduções pontuais</h4>
+     {!latest.components.length&&<p className="small-note">Nenhum componente pontual nesta versão.</p>}
+     {latest.components.map((c,i)=><div className="credit-installment" key={'component-'+i}>
+       <span><strong>{labels[c.kind as Component['kind']]??c.kind}</strong><small>{c.reason} · Exclusivo desta competência</small></span>
+       <b>{money(c.amountCents)}</b>
+     </div>)}
+   </div>}
    {latest?.grossStatus==='pending'&&<p role="status" className="credit-reconcile-pending">
       Divergência de conciliação pendente: o bruto menos os descontos discriminados não corresponde ao líquido informado. Nenhum ajuste ou retenção será criado automaticamente.
    </p>}
@@ -174,7 +190,9 @@ export function PayrollPanel({source,occurrenceKey,onChanged,onUnauthorized}:{
    <section className="credit-reconcile-history" aria-label="Histórico de demonstrativos da competência">
     <h4>Histórico imutável dos demonstrativos</h4>
     {statements.map(s=><div className="credit-installment" key={s.statementId}><span><strong>Líquido {money(s.netCents)}</strong>
-      <small>Bruto {brlCents(s.grossCents)} · {new Date(s.createdAt).toLocaleString('pt-BR')} · {s.components.map(c=>labels[c.kind as Component['kind']]+' '+money(c.amountCents)).join('; ')||'Sem adicionais'}</small>
+      <small>Bruto {brlCents(s.grossCents)} · {new Date(s.createdAt).toLocaleString('pt-BR')} · Base ao registrar: {money(s.baseNetCents)}
+       · Descontos: {s.discounts.map(d=>d.label+' '+money(d.amountCents)).join('; ')||'Nenhum'}
+       · Adicionais/reduções: {s.components.map(c=>(labels[c.kind as Component['kind']]??c.kind)+' '+c.reason+' '+money(c.amountCents)).join('; ')||'Nenhum'}</small>
      </span><b>{s.grossStatus==='pending'?'Conciliação pendente':s.grossStatus==='matched'?'Conferido':'Sem bruto'}</b></div>)}
    </section>
   </>}
