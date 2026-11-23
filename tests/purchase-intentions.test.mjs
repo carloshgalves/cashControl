@@ -183,7 +183,7 @@ test('F1 competing conversion keys produce one payable and no orphan commitment'
  ]);
  assert.deepEqual(attempts.map(x=>x.status).sort(),['fulfilled','rejected']);
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM financial_obligations').get().n,1);
- assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM purchase_intention_events WHERE action="convert"').get().n,1);
+ assert.equal(db.raw.prepare("SELECT COUNT(*) n FROM purchase_intention_events WHERE action='convert'").get().n,1);
  assert.equal((await getPlanningSummary(db,u)).activeReserveCents,0);
 }));
 test('F1 SQL injection failure on conversion event rolls back newly created payable (D1 batch)',()=>using(async db=>{
