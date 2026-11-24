@@ -18,3 +18,10 @@ Implementação de uma **candidata determinística**, sob **opt-in explícito po
 - Soma estrita em centavos, sem arredondamento; dados demais retornam erro, datas inválidas e horizonte excessivo falham.
 - Testes de código TypeScript, SQLite D1, API real Better Auth/CSRF e frontend continuam obrigatórios.
 - **Não houve tela implementada**: a UI de seleção de fonte, opt-in e avisos precisa de aprovação visual; não fechar #28 até a entrega vertical.
+
+## Evidência executável e revisão adversarial
+
+- [Actions #45312696113](https://github.com/carloshgalves/cashControl/actions/runs/45312696113): **SUCCESS** na revisão de backend e frontend, aplicação local das migrações D1 0001–0015, testes SQLite e Chromium com sessões reais Alice/Bob.
+- Cenários específicos cobertos: histórico de 0/1/3 trabalhos, mês sem receita, cancelamento com contagem auditável, dedução de expectativas explícitas por semana, insuficiência, opt-out, datas inválidas, tentativa de consultar fonte estrangeira e proteção por Origin.
+- Parecer de escopo: nenhuma alteração de dados/caixa no serviço ou endpoint; sem findings acionáveis identificados nos cenários exercitados. **Não equivale a validação da fórmula pela pessoa responsável nem à aprovação da UI**.
+- Gates ainda abertos: critérios da DEC-004 não aprovados; interface de opt-in não foi implementada antes do aceite visual (ADR-0001); CI verde é somente local, sem produção.
