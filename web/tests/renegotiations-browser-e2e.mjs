@@ -41,7 +41,7 @@ async function run(){
  const d=await get('/api/dashboard?from=2026-11-01&to=2027-02-28');
  assert.deepEqual([d.body.dashboard.cardInvoices.outstandingCents,d.body.dashboard.cashFlow.expensesCents],[69000,90000]);
  const old=await get('/api/cards/'+card.cardId+'/invoices/2026-11');
- assert.equal(old.body.invoice.invoice.outstandingCents,60000);
+ assert.equal(old.body.invoice.outstandingCents,60000);
  console.log('G2_SCHEDULE_REPLACEMENT_PASS: 600 old remainder replaced by 690 plan');
  for(let i=1;i<=3;i++)await post('/api/renegotiations/'+newPlan.agreementId+'/payments',{
   idempotencyKey:'g2-new-pay-'+i+'-'+randomUUID(),installmentNo:i,
