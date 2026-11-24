@@ -20,13 +20,16 @@ As DEC registram **o que foi aprovado** em discussões de produto. Não são ADR
 ## Estado
 
 - DEC-001 a DEC-014: registradas e aprovadas nos limites indicados em cada decisão.
-- Especificação funcional e tickets: **publicados**, com implementação incremental P0/P1/P2; decisões técnicas ainda dependem da Issue #8.
+- Especificação funcional e tickets: **publicados**, com implementação incremental P0/P1/P2; a ADR-0001 está aprovada; a Issue #8 permanece aberta até homologação operacional (CPU/Workers hospedado, backup e restore).
 - Backend financeiro (contas, movimentos, obrigações, transferências e reembolsos): implementado e testado em D1 local.
 - Dashboard backend: [PR #36](https://github.com/carloshgalves/cashControl/pull/36), mesclada, com dados em centavos e isolamento por usuário.
 - Dashboard interativo React/Vite: [PR #37](https://github.com/carloshgalves/cashControl/pull/37), mesclada, aprovada visualmente e validada no Chromium.
 - Trilha financeira e avisos in-app D-10/D-5: Issue #17 concluída; PRs #38/#39 mescladas na `main`.
 - Exportação privada XLSX/PDF: [PR #40](https://github.com/carloshgalves/cashControl/pull/40) mesclada em `main`; revisar o estado da Issue #18 separadamente.
-- Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo.
+- F1/F2: intenções, reservas virtuais e cenários read-only integrados na `main` (PRs #48/#49).
+- Próximos tickets funcionais: G1/#29, G2/#30 e F3/#28 (P2).
+- Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo; sem aprovação de dados financeiros reais.
+- **Gate operacional aberto:** #8–#10 (CPU Workers Free, recuperação de conta, backup/restauração, validação remota).
 
 O documento de decisões é a fonte atual das regras de negócio acordadas. Mudanças devem ser explicitadas e vinculadas à decisão que modificam.
 
@@ -96,7 +99,7 @@ Contrato: `GET /api/cards/:cardId/invoices/:cycle/reconciliation?limit=25&offset
 
 ## Trabalhos, recebimentos e custos — E1 / SPEC-005 (Issue #22)
 
-Implementação na branch `feat/e1-optional-work-costs`, aguardando merge. Cadastro opcional com contratante, valor combinado (opcional), datas previstas, categoria e observações. Estados previsto, confirmado, realizado e cancelado são independentes do estado de recebimento. Cancelamento preserva motivo, histórico e lançamentos anteriores; não cria dinheiro nem certifica dívida exigível.
+Implementação E1 integrada em `main` pela [PR #44](https://github.com/carloshgalves/cashControl/pull/44). Cadastro opcional com contratante, valor combinado (opcional), datas previstas, categoria e observações. Estados previsto, confirmado, realizado e cancelado são independentes do estado de recebimento. Cancelamento preserva motivo, histórico e lançamentos anteriores; não cria dinheiro nem certifica dívida exigível.
 
 Na seção **Trabalhos**, registre um serviço e associe movimentações efetivas já existentes. Também é possível abrir o formulário normal de receita ou despesa e vinculá-la após o registro. O vínculo é único por lançamento e titular, imutável e não cria entrada ou saída adicional. Reembolsos reduzem os custos líquidos; créditos de reembolso e pagamentos consolidados de fatura não podem ser vinculados como receita ou custo individual do serviço. Ex.: recebimentos de R$ 100 + R$ 200, despesas de R$ 40 + R$ 60 → resultado líquido de R$ 200.
 
@@ -174,7 +177,7 @@ Validação local: `npm run typecheck`, `npm run ui:check`, `npm run ui:build`, 
 
 ## Simulação conservadora e planejada — F2 / SPEC-006 (Issue #27)
 
-**Status:** branch `feat/f2-scenario-simulation` em PR Draft, sem deploy/merge. A **F1 (#26/PR #48)** já está integrada em `main`. A F2 amplia **Planejamento → Simular cenários** sem adicionar tabelas ou migrar banco (usa somente views de F1/E2/cartões/obrigações).
+**Status:** [PR #49](https://github.com/carloshgalves/cashControl/pull/49) mesclada via merge commit `b64d9b66` em 23/11/2026; sem deploy remoto. A **F1 (#26/PR #48)** já está integrada em `main`. A F2 amplia **Planejamento → Simular cenários** sem adicionar tabelas ou migrar banco (usa somente views de F1/E2/cartões/obrigações).
 
 A interface compara **Conservador** (apenas caixa atual e despesas futuras de obrigações/faturas existentes, sem renda futura) e **Planejado** (o mesmo cenário mais **somente** o valor ainda não recebido das expectativas de renda explicitamente cadastradas na E2, inclusive salários líquidos recorrentes informados, valores avulsos, adiamentos e reajustes salariais existentes). Valores de expectativas canceladas são removidos da projeção; recibos já vinculados à expectativa reduzem apenas a sua parcela futura e permanecem no saldo bancário atual. A ausência de emprego formal não cria salário automático. Estado E2 `confirmed` significa que o usuário confirmou a **expectativa**, não que o banco creditou dinheiro.
 
