@@ -1,11 +1,17 @@
 # Backlog do cashControl — SPEC → tickets (2026-11-10)
 
-**Estado:** planejamento registrado em 2026-11-10; núcleo P0, cartões D1 (#19/PR #41) e pagamentos D2 (#20/PR #42) integrados em `main`. A conferência manual de faturas D3 (#21/PR #43) foi integrada em `main`; trabalhos e custos E1 (#22/PR #44) estão integrados em `main`; rendas recorrentes E2 (#23/PR #45) estão integradas em `main`; remuneração e descontos E3 (#24/PR #46) estão integradas em `main`; retenções confirmadas E4 (#25/PR #47) estão integradas em `main`; intenções e reservas F1 (#26/PR #48) estão integradas em `main`; cenários e simulações F2 (#27/PR #49) estão integrados em `main`, após CI local verde e merge commit `b64d9b66`. Restam G1/#29, G2/#30 e F3/#28 sem implementação; os gates de produção #8–#10 continuam abertos. Consulte o README e as PRs para o status real.  
+**Estado:** planejamento registrado em 2026-11-10; núcleo P0, cartões D1 (#19/PR #41) e pagamentos D2 (#20/PR #42) integrados em `main`. A conferência manual de faturas D3 (#21/PR #43) foi integrada em `main`; trabalhos e custos E1 (#22/PR #44) estão integrados em `main`; rendas recorrentes E2 (#23/PR #45) estão integradas em `main`; remuneração e descontos E3 (#24/PR #46) estão integradas em `main`; retenções confirmadas E4 (#25/PR #47) estão integradas em `main`; intenções e reservas F1 (#26/PR #48) estão integradas em `main`; cenários e simulações F2 (#27/PR #49) estão integrados em `main`, após CI local verde e merge commit `b64d9b66`. G1/#29 ([PR #51](https://github.com/carloshgalves/cashControl/pull/51)), G2/#30 ([PR #53](https://github.com/carloshgalves/cashControl/pull/53)) e F3/#28 ([PR #52](https://github.com/carloshgalves/cashControl/pull/52)) foram integrados tecnicamente, mas ainda não possuem as interfaces dedicadas visualmente aprovadas; a fórmula F3 é candidata e depende de homologação. A1/#8 ganhou um ensaio independente de exportação/criptografia/restauração **local** (PR em revisão). Os gates operacionais remotos #8–#10 continuam abertos. Consulte o README e as PRs para o status real.  
 **Base:** [SPEC-000](../specs/SPEC-000-produto-mvp.md) · [DEC-001 a DEC-014](../decisions/DECISOES-DE-NEGOCIO.md)
 
 ## Estrutura
 
 As Issues **#1–#7** são os épicos/Issues pais (especificações por domínio); **#8–#30** são tickets de comportamento observável, cada um com `Parent`, critérios de aceite, bloqueios, validação e exclusões. As Issues pais têm checklists com referências `#n` para as filhas. **Esses checklists NÃO são relações nativas de sub-issue**, pois a conexão GitHub atual não disponibiliza ação de criação de subissue; o vínculo nativo deve ser feito posteriormente na interface GitHub ou por ferramenta com permissão e suporte à operação.
+
+## Próxima fatia operacional selecionada — A1 recuperação local (24/11/2026)
+
+- **Entregue em branch, não homologado remotamente:** [runbook de recuperação](../operations/D1-RECOVERY-RUNBOOK.md), módulo de backup SQL cifrado e ensaio com duas instâncias Wrangler/D1 descartáveis. A recuperação deve checar objetos SQL, FKs, linhas, saldos de Alice/Bob e divergências introduzidas propositalmente.
+- **Fora da entrega:** token de Cloudflare, backup de produção, acesso a terceiros, storage externo, retenção, recuperação remota, política de chaves e CPU no Workers Free hospedado. O ticket P0 #8 permanece aberto.
+- **Próxima etapa dependente de decisão:** homologar a política de backup externo e o desenho das telas G1/G2/F3 antes de iniciar a UI nova; manter B5/#15 aberto enquanto a jornada visual específica não estiver homologada.
 
 ## P0 — primeiro produto utilizável
 

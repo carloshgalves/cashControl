@@ -27,11 +27,19 @@ As DEC registram **o que foi aprovado** em discussões de produto. Não são ADR
 - Trilha financeira e avisos in-app D-10/D-5: Issue #17 concluída; PRs #38/#39 mescladas na `main`.
 - Exportação privada XLSX/PDF: [PR #40](https://github.com/carloshgalves/cashControl/pull/40) mesclada em `main`; Issue #18 encerrada após reconciliação dos critérios de aceite.
 - F1/F2: intenções, reservas virtuais e cenários read-only integrados na `main` (PRs #48/#49).
-- Próximos tickets funcionais: G1/#29, G2/#30 e F3/#28 (P2).
+- G1, G2 e F3: lógica e APIs integradas em `main` nas PRs [#51](https://github.com/carloshgalves/cashControl/pull/51), [#53](https://github.com/carloshgalves/cashControl/pull/53) e [#52](https://github.com/carloshgalves/cashControl/pull/52). As respectivas Issues #29, #30 e #28 permanecem abertas por ausência das telas dedicadas aprovadas visualmente; a fórmula F3 segue proposta ainda não homologada matematicamente.
 - Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo; sem aprovação de dados financeiros reais.
-- **Gate operacional aberto:** #8–#10 (CPU Workers Free, recuperação de conta, backup/restauração, validação remota).
+- **Gate operacional aberto:** #8–#10 (CPU Workers Free, recuperação de conta, backup/restauração, validação remota). A branch de A1 introduz um **ensaio de exportação/criptação/restauração local**; não prova backup externo, CPU hospedado ou restore remoto.
 
 O documento de decisões é a fonte atual das regras de negócio acordadas. Mudanças devem ser explicitadas e vinculadas à decisão que modificam.
+
+## Recuperabilidade — A1 / SPEC-001
+
+O procedimento local [D1-RECOVERY-RUNBOOK.md](docs/operations/D1-RECOVERY-RUNBOOK.md) demonstra recuperação de um banco D1 descartável com 16 migrações e duas contas de teste: exportação SQL real por Wrangler, criptografia autenticada AES-256-GCM, exclusão do export em claro, importação em **outro** D1 local, verificação das definições SQL de schema, integridade de FKs e comparação de todas as linhas e saldos derivados. Um teste adversarial modifica intencionalmente uma linha do banco restaurado e exige que a impressão digital detecte a divergência.
+
+Para reproduzir após `npm ci`: `npm run ops:recovery:drill`. A criptografia isolada também é testada em `npm test`. Nunca se conectam bancos remotos, não há SQL financeiro publicado em CI e a chave de backup de produção não existe no projeto.
+
+**Limite:** ensaio local não implica segurança operacional aprovada. O ticket #8 mantém gates específicos para armazenamento independente cifrado, retenção, políticas de acesso e recuperação de chave, restore remoto em ambiente isolado, monitoramento e aferição de CPU hospedada. Não utilizar dados financeiros reais nem encerrar os tickets #8–#10 com base nesse CI.
 
 ## Desenvolvimento local da interface
 

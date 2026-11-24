@@ -1,0 +1,38 @@
+name: A1 independent D1 recovery drill (local only)
+on:
+  push:
+    branches: [feat/a1-d1-recovery-drill]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: a1-local-d1-restore-drill
+  cancel-in-progress: true
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+      CLOUDFLARE_API_TOKEN: ''
+      CLOUDFLARE_ACCOUNT_ID: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Regression checks and type safety
+        run: |
+          npm run typecheck
+          npm run ui:check
+          npm test
+          npm run ui:test
+      - name: Independent encrypted local D1 export and empty-instance recovery
+        run: node --experimental-sqlite scripts/d1-recovery-drill.mjs
+      - name: Proof of isolation
+        if: always()
+        run: echo 'LOCAL_DISPOSABLE_D1_ONLY - NO_REMOTE - NO_PRODUCTION - NO_REAL_DATA - NO_BACKUP_ARTIFACT_UPLOAD'
