@@ -81,7 +81,7 @@ function snapshot(file){
  try{
   assert.equal(db.prepare('PRAGMA integrity_check').get().integrity_check,'ok');
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[]);
-  const objects=db.prepare(`SELECT type,name FROM sqlite_master
+  const objects=db.prepare(`SELECT type,name,sql FROM sqlite_master
     WHERE type IN ('table','view','index','trigger')
       AND name NOT LIKE 'sqlite_%' AND name<>'_cf_KV'
     ORDER BY type,name`).all();
@@ -138,8 +138,14 @@ export async function runRecoveryDrill(){
   // Import into a genuinely EMPTY, independently persisted D1 instance.
   runD1(target,['execute','DB','--file',decrypted],'empty-d1-restore');
   const restored=snapshot(await findSqlite(target));
-  assert.deepEqual(restored,sourceFingerprint,'Restored schema, rows and derived money must match');
+  assert.deepEqual(restored,sourceFingerprint,'Restored schema SQL definitions, rows and derived money must match');
+  // A green import must fail validation if it changes any restored row.
+  runD1(target,['execute','DB','--command',
+   "UPDATE user SET name='Alteração adversarial' WHERE id='fixture-bob'"],'tamper-detection');
+  assert.notEqual(snapshot(await findSqlite(target)).hash,sourceFingerprint.hash,
+   'Independent fingerprint must detect even an unrelated restored row mutation');
   console.log('A1_LOCAL_EXPORT_RESTORE_PASS');
+  console.log('A1_RESTORED_CONTENT_TAMPER_DETECTED');
   console.log('A1_SEALED_BACKUP_TAMPER_REJECTED');
   console.log('A1_DB_SCHEMA_AND_FINANCIAL_BALANCES_MATCH');
   console.log('NO_REMOTE_D1 NO_PRODUCTION_DEPLOY NO_REAL_USER_DATA');

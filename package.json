@@ -27,7 +27,8 @@
     "e4:e2e": "node web/tests/withholding-browser-e2e.mjs",
     "f1:e2e": "node web/tests/planning-browser-e2e.mjs",
     "f2:e2e": "node web/tests/scenarios-browser-e2e.mjs",
-    "g1:e2e": "node web/tests/loans-browser-e2e.mjs"
+    "g1:e2e": "node web/tests/loans-browser-e2e.mjs",
+    "ops:recovery:drill": "node --experimental-sqlite scripts/d1-recovery-drill.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9.3",
