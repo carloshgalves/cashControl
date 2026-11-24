@@ -185,8 +185,8 @@ export async function getPlanningSummary(db:FinancialDatabase,actor:Authenticate
  const row=await db.prepare([
   'SELECT',
   '(SELECT COALESCE(SUM(balance_cents),0) FROM financial_account_balances WHERE owner_user_id=?) AS cash_cents,',
-  '(SELECT COALESCE(SUM(outstanding_cents),0) FROM financial_obligation_balances WHERE owner_user_id=?) AS obligation_cents,',
-  '(SELECT COALESCE(SUM(outstanding_cents),0) FROM credit_invoice_balances WHERE owner_user_id=?) AS card_cents,',
+  '(SELECT COALESCE(SUM(outstanding_cents),0) FROM financial_active_due_items WHERE owner_user_id=? AND domain='obligation') AS obligation_cents,',
+  '(SELECT COALESCE(SUM(outstanding_cents),0) FROM financial_active_due_items WHERE owner_user_id=? AND domain='card') AS card_cents,',
   "(SELECT COALESCE(SUM(reserved_cents),0) FROM purchase_intention_balances WHERE owner_user_id=? AND state='reserved') AS reserve_cents,",
   "(SELECT COUNT(*) FROM purchase_intention_balances WHERE owner_user_id=? AND state='reserved') AS reserve_count",
  ].join(' ')).bind(...Array(5).fill(who(actor))).first<SummaryRow>();
