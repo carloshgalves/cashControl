@@ -964,12 +964,6 @@ export async function handleFinancialHttp(
     }
     return error(404, 'NOT_FOUND');
   } catch (cause) {
-    // Temporary diagnostics only for the disposable local G1 test environment;
-    // remove before approving this PR. No customer IDs or values are included.
-    if(expectedOrigin==='http://127.0.0.1:8787'&&requestURL.pathname==='/api/timeline'){
-      console.error('G1_LOCAL_TIMELINE_FAILURE',cause instanceof Error?cause.name:'UNKNOWN',
-        cause instanceof Error?cause.message.replace(/[0-9a-f]{8}-[0-9a-f-]{27,}/gi,'[id]').slice(0,200):'unknown');
-    }
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
     if(cause instanceof LoanUnavailable)return error(404,'NOT_FOUND');
     if(cause instanceof LoanConflict)return error(409,'CONFLICT');

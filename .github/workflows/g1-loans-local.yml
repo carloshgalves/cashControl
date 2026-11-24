@@ -48,11 +48,6 @@ jobs:
           echo $! >/tmp/g1-web.pid
       - name: Authenticated G1 browser verification
         run: npm run g1:e2e
-      - name: Diagnostic D1 worker log for disposable E2E only
-        if: failure()
-        shell: bash
-        run: |
-          grep -E 'G1_LOCAL_TIMELINE_FAILURE|D1_ERROR|SQLITE_ERROR' /tmp/g1-worker.log | tail -25 || true
       - name: Cleanup local resources
         if: always()
         shell: bash

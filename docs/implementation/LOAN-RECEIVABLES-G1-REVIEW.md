@@ -20,3 +20,11 @@
 A infraestrutura e os testes são locais (D1 descartável). Não houve homologação remota, integração bancária, cálculo de juros ou uso de dados reais. A alteração da interface específica de cadastro de empréstimos/baixas deverá seguir o gate da ADR-0001: **apresentar proposta visual e receber aprovação explícita do responsável antes da implementação de um novo módulo visual**. A linha do tempo atual recebe categorias próprias, mas um painel G1 dedicado ainda não foi aprovado.
 
 **Ciclo de revisão:** inspecionar logs reais de CI (testes, typecheck e navegador), corrigir qualquer finding reprodutível e repetir. Se a validação ficar pendente, manter a PR Draft e a Issue #29 aberta; não declarar integração concluída.
+
+## Evidência de execução CI local — 24/11/2026 UTC
+
+- [GitHub Actions #45310122880](https://github.com/carloshgalves/cashControl/actions/runs/45310122880): **SUCCESS** no commit `9efff4ea`. 266 testes backend aprovados; 18 frontend aprovados; typecheck/build e D1 local com migrações 0001–0015.
+- Chromium/Better Auth real: `G1_GRANT_AND_OVERDUE_PASS`, `G1_RETURN_PRINCIPAL_PASS`, `G1_AUTH_ISOLATION_PASS`, em desktop/mobile 390px e duas sessões A/B.
+- Finding G1-INT01: D1 hospedado pelo Workerd local impôs teto para a quantidade de termos em `UNION ALL`. A consulta foi corrigida com CTEs separadas (`loan_events`, `account_events`, `all_events`) sem alterar classificação financeira, filtros ou paginação. Regressão real voltou a passar no Chromium.
+- Diagnóstico transitório e impressão de erros do Worker foram **removidos** após identificação/correção, preservando a restrição de não expor dados em logs.
+- **Gate ainda aberto:** aceite visual do painel G1; validar novamente CI no HEAD desta atualização antes do merge. Sem deploy remoto.
