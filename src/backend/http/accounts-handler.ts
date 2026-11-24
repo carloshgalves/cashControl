@@ -1,3 +1,4 @@
+import {estimatePotential,PotentialNotApplicable,PotentialTooLarge} from '../planning/historical-potential.ts';
 import {grantLoan,getLoan,listLoans,receiveLoanRepayment,listLoanRepayments,LoanConflict,LoanUnavailable} from '../loans/loans.ts';
 import {simulatePlanning,SimulationConflict,SimulationTooLarge} from '../planning/scenarios.ts';
 import {createIntention,getIntention,listIntentions,listIntentionEvents,transitionIntention,getPlanningSummary,IntentionUnavailable,IntentionConflict,PlanningTooLarge} from '../planning/intentions.ts';
@@ -320,6 +321,26 @@ export async function handleFinancialHttp(
         principalCents:parseCents(v.principal as string),lentOn:v.lentOn,dueOn:v.dueOn,
       });
       return json({loan},201);
+    }
+    if(path==='/api/planning/potential'){
+      if(method!=='POST')return error(405,'METHOD_NOT_ALLOWED');
+      if(requestURL.search)return error(400,'INVALID_FILTER');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,2048);
+      if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;
+      try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+      catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const v=raw as Record<string,unknown>;
+      if(Object.keys(v).some(k=>!['include','sourceId','asOf','from','to'].includes(k))||
+       typeof v.include!=='boolean'||typeof v.asOf!=='string'||
+       typeof v.from!=='string'||typeof v.to!=='string'||
+       (v.sourceId!==undefined&&typeof v.sourceId!=='string'))return error(400,'INVALID_BODY');
+      return json({potential:await estimatePotential(database,actor,{
+        include:v.include,sourceId:typeof v.sourceId==='string'?v.sourceId:'',
+        asOf:v.asOf,from:v.from,to:v.to,
+      },()=>new Date(clock()))});
     }
     if(path==='/api/planning/simulate'){
       if(method!=='POST')return error(405,'METHOD_NOT_ALLOWED');
@@ -967,6 +988,8 @@ export async function handleFinancialHttp(
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
     if(cause instanceof LoanUnavailable)return error(404,'NOT_FOUND');
     if(cause instanceof LoanConflict)return error(409,'CONFLICT');
+    if(cause instanceof PotentialNotApplicable)return error(404,'NOT_APPLICABLE');
+    if(cause instanceof PotentialTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof SimulationConflict)return error(409,'SIMULATION_STALE');
     if(cause instanceof SimulationTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof IntentionUnavailable)return error(404,'NOT_FOUND');
