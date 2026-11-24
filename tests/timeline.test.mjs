@@ -22,10 +22,7 @@ class Db {
   constructor(){
     this.raw=new DatabaseSync(':memory:');
     this.raw.exec('PRAGMA foreign_keys=ON');
-    for(const name of [
-      '0001_financial_accounts.sql','0002_better_auth.sql','0003_cash_movements.sql',
-      '0004_financial_obligations.sql','0005_internal_transfers.sql','0006_cancellations_refunds.sql','0015_personal_loan_receivables.sql', '0007_credit_cards_installments.sql', '0008_card_invoice_payments.sql',
-    ])this.raw.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
+    for(const name of ['0001_financial_accounts.sql','0002_better_auth.sql','0003_cash_movements.sql','0004_financial_obligations.sql','0005_internal_transfers.sql','0006_cancellations_refunds.sql','0007_credit_cards_installments.sql','0008_card_invoice_payments.sql','0009_invoice_bank_reconciliation.sql','0010_work_services.sql','0011_income_expectations.sql','0012_salary_composition.sql','0013_salary_withholding_obligations.sql','0014_purchase_intentions.sql','0015_personal_loan_receivables.sql','0016_debt_renegotiation.sql'])this.raw.exec(readFileSync(new URL('../migrations/'+name,import.meta.url),'utf8'));
     this.queue=Promise.resolve();
   }
   prepare(sql){return new Statement(this.raw,sql);}
