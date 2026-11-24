@@ -115,9 +115,9 @@ export async function simulatePlanning(db:FinancialDatabase,actor:AuthenticatedA
  const [base,obligations,invoices,reserves,calendar,unlinked]=await Promise.all([
   getPlanningSummary(db,actor),
   boundedRows<DueRow>(db,
-   'SELECT due_on,outstanding_cents FROM financial_obligation_balances WHERE owner_user_id=? AND outstanding_cents>0 ORDER BY due_on,obligation_id LIMIT 2001',[who]),
+   'SELECT due_on,outstanding_cents FROM financial_active_due_items WHERE owner_user_id=? AND domain=\'obligation\' AND outstanding_cents>0 ORDER BY due_on,due_id LIMIT 2001',[who]),
   boundedRows<DueRow>(db,
-   'SELECT due_on,outstanding_cents FROM credit_invoice_balances WHERE owner_user_id=? AND outstanding_cents>0 ORDER BY due_on,card_id,invoice_cycle LIMIT 2001',[who]),
+   'SELECT due_on,outstanding_cents FROM financial_active_due_items WHERE owner_user_id=? AND domain=\'card\' AND outstanding_cents>0 ORDER BY due_on,due_id LIMIT 2001',[who]),
   boundedRows<ReserveRow>(db,
    "SELECT intention_id,reserved_cents FROM purchase_intention_balances WHERE owner_user_id=? AND state='reserved' ORDER BY intention_id LIMIT 2001",[who]),
   listCalendar(db,actor,input.from,input.to),
