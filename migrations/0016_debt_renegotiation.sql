@@ -57,9 +57,9 @@ CREATE TRIGGER debt_renegotiation_guard BEFORE INSERT ON debt_renegotiations BEG
        AND p.paid_on>NEW.agreed_on));
  SELECT RAISE(ABORT,'INVALID_RENEGOTIATION_SCHEDULE') WHERE
    EXISTS(SELECT 1 FROM json_each(NEW.schedule_json) j WHERE
-     json_type(j.value)<>'object' OR
-     json_type(j.value,'$.dueOn')<>'text' OR
-     json_type(j.value,'$.amountCents')<>'integer' OR
+     COALESCE(json_type(j.value),'missing')<>'object' OR
+     json_type(j.value,'$.dueOn') IS NOT 'text' OR
+     json_type(j.value,'$.amountCents') IS NOT 'integer' OR
      CAST(json_extract(j.value,'$.amountCents') AS INTEGER) NOT BETWEEN 1 AND 9000000000000 OR
      length(json_extract(j.value,'$.dueOn'))<>10 OR
      date(json_extract(j.value,'$.dueOn'),'+0 days')<>json_extract(j.value,'$.dueOn') OR

@@ -98,6 +98,26 @@ test('G2 ordinary partially paid obligation becomes new schedule without losing 
   .run('alice',crypto.randomUUID(),key('cancel-later'),bill.obligationId,'2026-11-26',now().toISOString()));
  assert.equal((await getRenegotiation(db,f.who,a.agreementId)).outstandingCents,69000);
 }));
+test('G2 direct SQL rejects missing installment date, amount or null JSON entry',()=>dbTest(async db=>{
+ const f=await fixture(db);
+ const raw=db.raw.prepare([
+  'INSERT INTO debt_renegotiations(owner_user_id,agreement_id,creation_key,subject_kind,obligation_id,card_id,invoice_cycle,base_outstanding_cents,fees_cents,schedule_json,agreed_on,reason,created_at)',
+  'VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)'
+ ].join(' '));
+ const bad=[
+  ['missing-date',JSON.stringify([{amountCents:60000}])],
+  ['missing-amount',JSON.stringify([{dueOn:'2026-12-10',amountCents:60000},{dueOn:'2027-01-10'}])],
+  ['null-entry',JSON.stringify([null,{dueOn:'2026-12-10',amountCents:60000}])],
+ ];
+ for(const [tag,json] of bad){
+  assert.throws(()=>raw.run('alice',crypto.randomUUID(),key('malformed-'+tag),
+   'card_invoice',null,f.card.cardId,'2026-11',60000,0,json,'2026-11-20',null,now().toISOString()),
+   undefined,'SQL trigger must reject incomplete installment '+tag);
+ }
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM debt_renegotiations').get().n,0);
+ assert.equal((await getDashboard(db,f.who,at)).cardInvoices.outstandingCents,60000);
+}));
+
 test('G2 SQL forbids obsolete invoice payments and new installments after agreement',()=>dbTest(async db=>{
  const f=await fixture(db),a=await createRenegotiation(db,f.who,agreement(f),now);
  await assert.rejects(()=>payInvoice(db,f.who,{idempotencyKey:key('obsolete-pay'),cardId:f.card.cardId,cycle:'2026-11',
