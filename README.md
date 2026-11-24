@@ -25,7 +25,7 @@ As DEC registram **o que foi aprovado** em discussões de produto. Não são ADR
 - Dashboard backend: [PR #36](https://github.com/carloshgalves/cashControl/pull/36), mesclada, com dados em centavos e isolamento por usuário.
 - Dashboard interativo React/Vite: [PR #37](https://github.com/carloshgalves/cashControl/pull/37), mesclada, aprovada visualmente e validada no Chromium.
 - Trilha financeira e avisos in-app D-10/D-5: Issue #17 concluída; PRs #38/#39 mescladas na `main`.
-- Exportação privada XLSX/PDF: [PR #40](https://github.com/carloshgalves/cashControl/pull/40) mesclada em `main`; revisar o estado da Issue #18 separadamente.
+- Exportação privada XLSX/PDF: [PR #40](https://github.com/carloshgalves/cashControl/pull/40) mesclada em `main`; Issue #18 encerrada após reconciliação dos critérios de aceite.
 - F1/F2: intenções, reservas virtuais e cenários read-only integrados na `main` (PRs #48/#49).
 - Próximos tickets funcionais: G1/#29, G2/#30 e F3/#28 (P2).
 - Cloudflare hospedada e produção: deliberadamente adiadas até o produto estar mais completo; sem aprovação de dados financeiros reais.
