@@ -94,7 +94,7 @@ test('G2 ordinary partially paid obligation becomes new schedule without losing 
  assert.equal((await getPlanningSummary(db,f.who)).obligationsCents,69000);
  await assert.rejects(()=>payObligation(db,f.who,{idempotencyKey:key('late-original'),obligationId:bill.obligationId,
   accountId:f.account.accountId,amountCents:100,method:'pix',paidOn:'2026-11-25'},now));
- await assert.rejects(()=>db.raw.prepare("INSERT INTO obligation_cancellations(owner_user_id,cancellation_id,creation_key,obligation_id,canceled_on,created_at) VALUES(?,?,?,?,?,?)")
+ assert.throws(()=>db.raw.prepare("INSERT INTO obligation_cancellations(owner_user_id,cancellation_id,creation_key,obligation_id,canceled_on,created_at) VALUES(?,?,?,?,?,?)")
   .run('alice',crypto.randomUUID(),key('cancel-later'),bill.obligationId,'2026-11-26',now().toISOString()));
  assert.equal((await getRenegotiation(db,f.who,a.agreementId)).outstandingCents,69000);
 }));
