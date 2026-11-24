@@ -1,3 +1,4 @@
+import {createWork,linkWorkMovement,availableWorkMovements,WorkConflict} from '../src/backend/work/work.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
@@ -116,6 +117,26 @@ test('G2 direct SQL rejects missing installment date, amount or null JSON entry'
  }
  assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM debt_renegotiations').get().n,0);
  assert.equal((await getDashboard(db,f.who,at)).cardInvoices.outstandingCents,60000);
+}));
+
+test('G2 a single renegotiation cash debit cannot also settle an unrelated debt or count as work cost',()=>dbTest(async db=>{
+ const f=await fixture(db);
+ const agreementView=await createRenegotiation(db,f.who,agreement(f),now);
+ const paid=await payRenegotiation(db,f.who,payment(f,agreementView,1,'not-reusable'),now);
+ const unrelated=await createObligation(db,f.who,{idempotencyKey:key('unrelated'),
+  title:'Outra obrigação',totalCents:23000,dueOn:'2026-12-20'},now);
+ const oldBalance=(await getAccount(db,f.who,f.account.accountId)).balanceCents;
+ assert.throws(()=>db.raw.prepare(
+  'INSERT INTO financial_obligation_payments(owner_user_id,payment_id,creation_key,obligation_id,movement_id,amount_cents,created_at) VALUES(?,?,?,?,?,?,?)'
+ ).run('alice',crypto.randomUUID(),key('reuse-other-obligation'),unrelated.obligationId,
+  paid.movementId,23000,now().toISOString()),/RENEGOTIATION_PAYMENT_ALREADY_APPLIED/);
+ assert.equal((await getObligation(db,f.who,unrelated.obligationId)).outstandingCents,23000);
+ const work=await createWork(db,f.who,{idempotencyKey:key('work-cost'),title:'Serviço auxiliar'},now);
+ assert.equal((await availableWorkMovements(db,f.who)).some(m=>m.movementId===paid.movementId),false);
+ await assert.rejects(()=>linkWorkMovement(db,f.who,work.workId,
+  {idempotencyKey:key('reuse-work'),movementId:paid.movementId},now),WorkConflict);
+ assert.equal((await getAccount(db,f.who,f.account.accountId)).balanceCents,oldBalance);
+ assert.equal((await getRenegotiation(db,f.who,agreementView.agreementId)).outstandingCents,46000);
 }));
 
 test('G2 SQL forbids obsolete invoice payments and new installments after agreement',()=>dbTest(async db=>{

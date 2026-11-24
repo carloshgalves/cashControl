@@ -180,3 +180,24 @@ CREATE VIEW financial_active_due_items AS
   CASE WHEN r.subject_kind='obligation' THEN 'obligation' ELSE 'card' END AS domain,
   'renegotiation:'||r.agreement_id||':'||r.installment_no AS due_id,r.due_on,r.outstanding_cents
  FROM debt_renegotiation_installment_balances r WHERE r.outstanding_cents>0;
+
+-- Cross-ledger defense in BOTH insertion orders: one confirmed cash debit must
+-- never simultaneously settle a renegotiation and another obligation, or be
+-- counted again as a work-service expense.
+CREATE TRIGGER renegotiation_movement_not_other_obligation
+BEFORE INSERT ON financial_obligation_payments
+WHEN EXISTS(SELECT 1 FROM debt_renegotiation_payments p
+ WHERE p.owner_user_id=NEW.owner_user_id AND p.movement_id=NEW.movement_id)
+BEGIN SELECT RAISE(ABORT,'RENEGOTIATION_PAYMENT_ALREADY_APPLIED'); END;
+
+CREATE TRIGGER renegotiation_movement_not_work
+BEFORE INSERT ON work_movement_links
+WHEN EXISTS(SELECT 1 FROM debt_renegotiation_payments p
+ WHERE p.owner_user_id=NEW.owner_user_id AND p.movement_id=NEW.movement_id)
+BEGIN SELECT RAISE(ABORT,'RENEGOTIATION_PAYMENT_NOT_WORK_COST'); END;
+
+CREATE TRIGGER renegotiation_payment_not_existing_work
+BEFORE INSERT ON debt_renegotiation_payments
+WHEN EXISTS(SELECT 1 FROM work_movement_links w
+ WHERE w.owner_user_id=NEW.owner_user_id AND w.movement_id=NEW.movement_id)
+BEGIN SELECT RAISE(ABORT,'WORK_LINK_RENEGOTIATION_PAYMENT'); END;
