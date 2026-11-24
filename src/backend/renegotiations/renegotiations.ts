@@ -8,7 +8,7 @@ import {validateDate} from '../timeline/timeline.ts';
 export class DebtRenegotiationUnavailable extends Error{}
 export class DebtRenegotiationConflict extends Error{}
 export class DebtRenegotiationTooLarge extends Error{}
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const KEY=/^[A-Za-z0-9_-]{12,128}$/;
 const MAX=9000000000000n;
 type Method='pix'|'cash'|'debit'|'bank_transfer';
