@@ -1,6 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {FormEvent} from 'react';
 import {ApiError,allPages,request} from './api.ts';
+import {ScenarioPanel} from './ScenarioPanel.tsx';
 import {money,parseBankInvoiceAmount} from './finance.ts';
 import './planning.css';
 type State='planning'|'reserved'|'converted'|'excluded';
@@ -127,6 +128,7 @@ export function PlanningScreen({refreshKey,onChanged,onUnauthorized}:{
    {summary.freeMarginCents<0&&<p role="status">A margem projetada ficou negativa. Isso é um alerta de planejamento, não bloqueio de compra.</p>}
    <p className="small-note">Critério conservador F1: saldo atual − obrigações abertas − faturas pendentes − reservas ativas, sem somar salários apenas previstos. Cenários com datas e renda futura são da F2.</p>
   </section>}
+  {ready&&<ScenarioPanel intentions={intentions} refreshKey={refreshKey+revision} onUnauthorized={onUnauthorized}/>}
   {createOpen&&<form aria-label="Cadastrar intenção de compra" className="planning-form" onSubmit={create}>
    <fieldset disabled={busy}>
     <label>O que pretende comprar?<input required maxLength={120} value={draft.title} onChange={e=>edit('title',e.target.value)}/></label>

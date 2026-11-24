@@ -1,3 +1,4 @@
+import {simulatePlanning,SimulationConflict,SimulationTooLarge} from '../planning/scenarios.ts';
 import {createIntention,getIntention,listIntentions,listIntentionEvents,transitionIntention,getPlanningSummary,IntentionUnavailable,IntentionConflict,PlanningTooLarge} from '../planning/intentions.ts';
 import {confirmSalaryWithholding,listSalaryWithholdings,listObligationWithholdings,WithholdingConflict,WithholdingNotFound,WithholdingNotApplicable} from '../payroll/withholdings.ts';
 import {createRevision,listRevisions,createStatement,getStatement,listStatements,SalaryConflict,SalaryNotApplicable,SalaryTooLarge} from '../payroll/payroll.ts';
@@ -269,6 +270,39 @@ export async function handleFinancialHttp(
 
 
 
+
+
+    // F2 read-only scenario: POST carries hypothetical parameters but never
+    // writes, confirms purchases, changes reserves, or posts cash.
+    if(path==='/api/planning/simulate'){
+      if(method!=='POST')return error(405,'METHOD_NOT_ALLOWED');
+      if(requestURL.search) return error(400,'INVALID_FILTER');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,2048);
+      if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;
+      try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+      catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const v=raw as Record<string,unknown>;
+      if(Object.keys(v).some(k=>!['from','to','hypothetical'].includes(k))||
+       typeof v.from!=='string'||typeof v.to!=='string')
+       return error(400,'INVALID_BODY');
+      let what:undefined|{amountCents:number;purchaseOn:string;dueOn:string;intentionId?:string};
+      if(v.hypothetical!==undefined&&v.hypothetical!==null){
+       const x=v.hypothetical;
+       if(!x||typeof x!=='object'||Array.isArray(x))return error(400,'INVALID_BODY');
+       const p=x as Record<string,unknown>;
+       if(Object.keys(p).some(k=>!['amount','purchaseOn','dueOn','intentionId'].includes(k))||
+        typeof p.amount!=='string'||typeof p.purchaseOn!=='string'||typeof p.dueOn!=='string'||
+        (p.intentionId!==undefined&&typeof p.intentionId!=='string'))return error(400,'INVALID_BODY');
+       what={amountCents:parseCents(p.amount),purchaseOn:p.purchaseOn,dueOn:p.dueOn,
+        ...(p.intentionId!==undefined?{intentionId:p.intentionId as string}:{})};
+      }
+      const simulation=await simulatePlanning(database,actor,{from:v.from,to:v.to,
+       ...(what?{hypothetical:what}:{})});
+      return json({simulation});
+    }
 
     // F1: planning is virtual. Converting an intention atomically adds exactly
     // one ordinary payable and removes the virtual reserve. No cash posting.
@@ -884,6 +918,8 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof SimulationConflict)return error(409,'SIMULATION_STALE');
+    if(cause instanceof SimulationTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof IntentionUnavailable)return error(404,'NOT_FOUND');
     if(cause instanceof IntentionConflict)return error(409,'CONFLICT');
     if(cause instanceof PlanningTooLarge)return error(413,'RESULT_TOO_LARGE');
