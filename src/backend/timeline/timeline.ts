@@ -3,7 +3,7 @@ import { assertCents } from '../../domain/money.ts';
 
 export type TimelineStatus = 'realized' | 'pending' | 'overdue' | 'planned' | 'canceled';
 export type TimelineKind = 'income' | 'expense' | 'payment' | 'refund' |
-  'transfer' | 'obligation' | 'cancellation';
+  'transfer' | 'obligation' | 'cancellation' | 'loan_disbursement' | 'loan_repayment' | 'loan_receivable';
 export interface TimelineEvent {
   id: string;
   date: string;
@@ -136,6 +136,24 @@ const EVENT_SQL = [
   ' t.source_account_id, NULL, t.target_account_id, t.created_at',
   ' FROM internal_transfers t WHERE t.owner_user_id = ?',
   ' UNION ALL',
+  " SELECT 'loan:' || l.loan_id, l.lent_on, 'loan_disbursement', 'realized',",
+  " 'Empréstimo concedido: ' || l.borrower, l.principal_cents,",
+  ' l.source_account_id, NULL, l.loan_id, l.created_at',
+  ' FROM personal_loans l WHERE l.owner_user_id = ?',
+  ' UNION ALL',
+  " SELECT 'loan-repayment:' || r.repayment_id, r.received_on, 'loan_repayment', 'realized',",
+  " 'Devolução de principal: ' || l.borrower, r.amount_cents,",
+  ' r.destination_account_id, NULL, r.loan_id, r.created_at',
+  ' FROM personal_loan_repayments r JOIN personal_loans l',
+  ' ON l.owner_user_id=r.owner_user_id AND l.loan_id=r.loan_id',
+  ' WHERE r.owner_user_id = ?',
+  ' UNION ALL',
+  " SELECT 'loan-receivable:' || l.loan_id, l.due_on, 'loan_receivable',",
+  " CASE WHEN l.due_on > ? THEN 'planned' WHEN l.due_on < ? THEN 'overdue' ELSE 'pending' END,",
+  " 'A receber de: ' || l.borrower, l.outstanding_cents, NULL, NULL, l.loan_id, l.created_at",
+  ' FROM personal_loan_balances l',
+  ' WHERE l.owner_user_id=? AND l.outstanding_cents>0',
+  ' UNION ALL',
   " SELECT 'obligation:' || o.obligation_id, o.due_on,",
   " 'obligation', CASE WHEN o.due_on > ? THEN 'planned' WHEN o.due_on < ? THEN 'overdue' ELSE 'pending' END,",
   ' o.title, o.outstanding_cents, NULL, o.obligation_id, NULL, o.created_at',
@@ -173,7 +191,7 @@ export async function listTimeline(db: FinancialDatabase, actor: AuthenticatedAc
   options: TimelineOptions): Promise<TimelinePage> {
   const who = owner(actor), { status, limit, offset } = checkOptions(options);
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
+    who, who, who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
     options.from, options.to, status, status, null, null, null, limit + 1, offset,
   ).all<EventRow>();
   const events = rows.results.slice(0, limit).map((r): TimelineEvent => {
@@ -268,7 +286,7 @@ export async function readExportTimeline(
     throw new TypeError('Invalid account id');
   }
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
+    who, who, who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
     options.from, options.to, status, status, account, account, account,
     maxEvents + 1, 0,
   ).all<EventRow>();
@@ -276,7 +294,7 @@ export async function readExportTimeline(
   return rows.results.map(r=>{
     assertCents(r.amount_cents);
     if (!r.event_id || !r.title || !statuses.has(r.event_status) ||
-        !['income','expense','payment','refund','transfer','obligation','cancellation'].includes(r.event_kind)) {
+        !['income','expense','payment','refund','transfer','obligation','cancellation','loan_disbursement','loan_repayment','loan_receivable'].includes(r.event_kind)) {
       throw new Error('Inconsistent timeline event');
     }
     return {
