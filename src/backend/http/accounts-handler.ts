@@ -308,7 +308,7 @@ export async function handleFinancialHttp(
         if(typeof v.destinationAccountId!=='string'||typeof v.receivedOn!=='string')return error(400,'INVALID_BODY');
         const repayment=await receiveLoanRepayment(database,actor,{
           idempotencyKey:v.idempotencyKey,loanId:key!,destinationAccountId:v.destinationAccountId,
-          amountCents:parseCents(v.amount),receivedOn:v.receivedOn,
+          amountCents:parseCents(v.amount as string),receivedOn:v.receivedOn,
         });
         return json({repayment},201);
       }
@@ -317,7 +317,7 @@ export async function handleFinancialHttp(
          return error(400,'INVALID_BODY');
       const loan=await grantLoan(database,actor,{
         idempotencyKey:v.idempotencyKey,borrower:v.borrower,title:v.title,sourceAccountId:v.sourceAccountId,
-        principalCents:parseCents(v.principal),lentOn:v.lentOn,dueOn:v.dueOn,
+        principalCents:parseCents(v.principal as string),lentOn:v.lentOn,dueOn:v.dueOn,
       });
       return json({loan},201);
     }
