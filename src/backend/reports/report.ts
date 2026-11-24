@@ -19,6 +19,7 @@ export class ReportReconciliationError extends Error {
 const kinds:Record<TimelineKind,string>={
  income:'Receita',expense:'Despesa',payment:'Pagamento',
  refund:'Reembolso',transfer:'Transferência',obligation:'Obrigação',cancellation:'Cancelamento',
+ loan_disbursement:'Empréstimo concedido',loan_repayment:'Devolução de principal',loan_receivable:'Valor a receber',
 };
 const statuses:Record<string,string>={
  realized:'Realizado',planned:'Previsto',pending:'Pendente',
@@ -47,7 +48,7 @@ export function totalsOf(events:TimelineEvent[]):ReportTotals {
   else if(e.kind==='refund')total.refundsCents=addSafe(total.refundsCents,e.amountCents);
   else if(e.kind==='transfer')total.transfersCents=addSafe(total.transfersCents,e.amountCents);
   else if(e.kind==='obligation')total.outstandingCents=addSafe(total.outstandingCents,e.amountCents);
-  else if(e.kind!=='cancellation')throw new TypeError('Bad event kind');
+  else if(!['cancellation','loan_disbursement','loan_repayment','loan_receivable'].includes(e.kind))throw new TypeError('Bad event kind');
  }
  total.netCents=addSafe(addSafe(total.incomeCents,-total.expensesCents),total.refundsCents);
  return total;
@@ -124,7 +125,7 @@ export async function makeReport(
    [t('Referência (data civil): '+options.asOf)],
    [t('Escopo: '+scope)],
    [t('Filtro de situação: '+label)],
-   [t('Eventos confirmados e obrigações pendentes separados; transferências não são receita. Valores muito altos são texto monetário para preservar centavos.')],
+   [t('Eventos confirmados e obrigações pendentes separados; transferências e principal de empréstimo não são renda. Valores muito altos são texto monetário para preservar centavos.')],
    heads.map(v=>t(v,1)),
   ];
   for(const e of rows)sheet.push([
