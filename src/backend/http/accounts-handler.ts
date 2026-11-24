@@ -1,3 +1,4 @@
+import {grantLoan,getLoan,listLoans,receiveLoanRepayment,listLoanRepayments,LoanConflict,LoanUnavailable} from '../loans/loans.ts';
 import {simulatePlanning,SimulationConflict,SimulationTooLarge} from '../planning/scenarios.ts';
 import {createIntention,getIntention,listIntentions,listIntentionEvents,transitionIntention,getPlanningSummary,IntentionUnavailable,IntentionConflict,PlanningTooLarge} from '../planning/intentions.ts';
 import {confirmSalaryWithholding,listSalaryWithholdings,listObligationWithholdings,WithholdingConflict,WithholdingNotFound,WithholdingNotApplicable} from '../payroll/withholdings.ts';
@@ -274,6 +275,52 @@ export async function handleFinancialHttp(
 
     // F2 read-only scenario: POST carries hypothetical parameters but never
     // writes, confirms purchases, changes reserves, or posts cash.
+    // G1 loan/receivable API: loan principal is NOT earned income.
+    if(path==='/api/loans'||/^\/api\/loans\/[0-9a-f-]{36}(?:\/repayments)?$/.test(path)){
+      const loanMatch=path.match(/^\/api\/loans\/([0-9a-f-]{36})(\/repayments)?$/);
+      const key=loanMatch?.[1];
+      const isPayments=Boolean(loanMatch?.[2]);
+      if(method==='GET'){
+        const query=requestURL.searchParams;
+        const allowed=new Set(isPayments||!key?['limit','offset']:[]);
+        let bad=false;query.forEach((_v,k)=>{if(!allowed.has(k)||query.getAll(k).length!==1)bad=true;});
+        if(bad)return error(400,'INVALID_FILTER');
+        const p=(name:string,fallback:number)=>{const v=query.get(name);if(v===null)return fallback;
+          if(!/^(?:0|[1-9]\d{0,6})$/.test(v))throw new TypeError('Invalid pagination');return Number(v);};
+        if(!key)return json({loans:await listLoans(database,actor,p('limit',50),p('offset',0))});
+        if(!isPayments){const loan=await getLoan(database,actor,key);return loan?json({loan}):error(404,'NOT_FOUND');}
+        return json({repayments:await listLoanRepayments(database,actor,key,p('limit',50),p('offset',0))});
+      }
+      if(method!=='POST'||(key&&!isPayments)||requestURL.search)return error(405,'METHOD_NOT_ALLOWED');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,4096);
+      if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;
+      try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+      catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const v=raw as Record<string,unknown>;
+      const fields=isPayments?['idempotencyKey','destinationAccountId','amount','receivedOn']:
+        ['idempotencyKey','borrower','title','sourceAccountId','principal','lentOn','dueOn'];
+      if(Object.keys(v).some(k=>!fields.includes(k))||typeof v.idempotencyKey!=='string'||
+         typeof (isPayments?v.amount:v.principal)!=='string')return error(400,'INVALID_BODY');
+      if(isPayments){
+        if(typeof v.destinationAccountId!=='string'||typeof v.receivedOn!=='string')return error(400,'INVALID_BODY');
+        const repayment=await receiveLoanRepayment(database,actor,{
+          idempotencyKey:v.idempotencyKey,loanId:key!,destinationAccountId:v.destinationAccountId,
+          amountCents:parseCents(v.amount),receivedOn:v.receivedOn,
+        });
+        return json({repayment},201);
+      }
+      if(typeof v.borrower!=='string'||typeof v.title!=='string'||
+         typeof v.sourceAccountId!=='string'||typeof v.lentOn!=='string'||typeof v.dueOn!=='string')
+         return error(400,'INVALID_BODY');
+      const loan=await grantLoan(database,actor,{
+        idempotencyKey:v.idempotencyKey,borrower:v.borrower,title:v.title,sourceAccountId:v.sourceAccountId,
+        principalCents:parseCents(v.principal),lentOn:v.lentOn,dueOn:v.dueOn,
+      });
+      return json({loan},201);
+    }
     if(path==='/api/planning/simulate'){
       if(method!=='POST')return error(405,'METHOD_NOT_ALLOWED');
       if(requestURL.search) return error(400,'INVALID_FILTER');
@@ -918,6 +965,8 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof LoanUnavailable)return error(404,'NOT_FOUND');
+    if(cause instanceof LoanConflict)return error(409,'CONFLICT');
     if(cause instanceof SimulationConflict)return error(409,'SIMULATION_STALE');
     if(cause instanceof SimulationTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof IntentionUnavailable)return error(404,'NOT_FOUND');
