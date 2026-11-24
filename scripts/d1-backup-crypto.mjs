@@ -28,9 +28,9 @@ export async function sealSql(input,output,key=backupKey()){
  const original=await stat(input);
  if(!original.isFile()||original.size<1)throw new Error('Empty or invalid SQL export');
  // Never overwrite a previous backup. Files stay owner-readable only.
- let out;
+ let out,created=false;
  try{
-  out=await open(output,'wx',0o600);
+  out=await open(output,'wx',0o600);created=true;
   const iv=randomBytes(IV_LEN),cipher=createCipheriv('aes-256-gcm',key,iv);
   await append(out,Buffer.concat([MAGIC,iv]));
   for await(const chunk of createReadStream(input).pipe(cipher))await append(out,chunk);
@@ -39,7 +39,7 @@ export async function sealSql(input,output,key=backupKey()){
   return {format:'cashcontrol-d1-sealed-v1',bytes:original.size};
  }catch(error){
   await cleanClose(out);
-  try{await unlink(output);}catch{}
+  if(created)try{await unlink(output);}catch{}
   throw error;
  }
 }
@@ -75,15 +75,15 @@ export async function verifySealedSql(input,key=backupKey()){
 }
 
 export async function restoreSealedSql(input,output,key=backupKey()){
- let out;
+ let out,created=false;
  try{
-  out=await open(output,'wx',0o600);
+  out=await open(output,'wx',0o600);created=true;
   const bytes=await decipherFile(input,key,async chunk=>{await append(out,chunk);});
   await out.sync();await out.close();out=null;
   return {format:'cashcontrol-d1-sealed-v1',bytes};
  }catch(error){
   await cleanClose(out);
-  try{await unlink(output);}catch{}
+  if(created)try{await unlink(output);}catch{}
   throw error;
  }
 }
