@@ -118,12 +118,13 @@ test('G2 idempotent retry, stale remaining and concurrent installment overpaymen
  await assert.rejects(()=>payRenegotiation(db,f.who,{...one,amountCents:12000},now),DebtRenegotiationConflict);
  const before=db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n;
  const race=await Promise.allSettled([
-  payRenegotiation(db,f.who,payment(f,first,1,'race-a',15000),now),
-  payRenegotiation(db,f.who,payment(f,first,1,'race-b',15000),now),
+  payRenegotiation(db,f.who,payment(f,first,1,'race-a',10000),now),
+  payRenegotiation(db,f.who,payment(f,first,1,'race-b',10000),now),
  ]);
- assert.equal(race.filter(x=>x.status==='fulfilled').length,0,'remaining 13000 prevents both 15000 payments');
- assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,before);
- assert.equal((await getRenegotiation(db,f.who,first.agreementId)).installments[0].outstandingCents,13000);
+ assert.equal(race.filter(x=>x.status==='fulfilled').length,1,'only one of two 10000 payments may consume the 13000 remainder');
+ assert.equal(race.filter(x=>x.status==='rejected').length,1,'concurrent overpayment must rollback atomically');
+ assert.equal(db.raw.prepare('SELECT COUNT(*) n FROM posted_cash_movements').get().n,before+1);
+ assert.equal((await getRenegotiation(db,f.who,first.agreementId)).installments[0].outstandingCents,3000);
 }));
 test('G2 A/B cross-user source and installment isolated',()=>dbTest(async db=>{
  const a=await fixture(db),b=await fixture(db,'bob');
