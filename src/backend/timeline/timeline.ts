@@ -180,7 +180,7 @@ const EVENT_SQL = [
   '   AND o.obligation_id = c.obligation_id',
   ' WHERE c.owner_user_id = ?',
   '),',
-  'renegotiation_events AS (',
+  'renegotiation_events(event_id,event_date,event_kind,event_status,title,amount_cents,account_id,obligation_id,related_id,created_at) AS (',
   " SELECT 'renegotiation:' || i.agreement_id || ':' || i.installment_no, i.due_on,",
   " 'obligation', CASE WHEN i.due_on > ? THEN 'planned' WHEN i.due_on < ? THEN 'overdue' ELSE 'pending' END,",
   " 'Acordo: parcela ' || i.installment_no || ' de ' || json_array_length(a.schedule_json),",
