@@ -19,12 +19,21 @@ class SQLiteD1 {
     this.raw = new DatabaseSync(':memory:');
     this.raw.exec('PRAGMA foreign_keys=ON');
     this.raw.exec(readFileSync(new URL('../migrations/0001_financial_accounts.sql', import.meta.url), 'utf8'));
-    this.raw.exec(readFileSync(new URL('../migrations/0003_cash_movements.sql', import.meta.url), 'utf8'));
     this.raw.exec(readFileSync(new URL('../migrations/0002_better_auth.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0003_cash_movements.sql', import.meta.url), 'utf8'));
     this.raw.exec(readFileSync(new URL('../migrations/0004_financial_obligations.sql', import.meta.url), 'utf8'));
     this.raw.exec(readFileSync(new URL('../migrations/0005_internal_transfers.sql', import.meta.url), 'utf8'));
     this.raw.exec(readFileSync(new URL('../migrations/0006_cancellations_refunds.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0007_credit_cards_installments.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0008_card_invoice_payments.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0009_invoice_bank_reconciliation.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0010_work_services.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0011_income_expectations.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0012_salary_composition.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0013_salary_withholding_obligations.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0014_purchase_intentions.sql', import.meta.url), 'utf8'));
     this.raw.exec(readFileSync(new URL('../migrations/0015_personal_loan_receivables.sql', import.meta.url), 'utf8'));
+    this.raw.exec(readFileSync(new URL('../migrations/0016_debt_renegotiation.sql', import.meta.url), 'utf8'));
     this.batchQueue = Promise.resolve();
   }
   prepare(sql) { return new SQLiteD1Statement(this.raw, sql); }
