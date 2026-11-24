@@ -3,7 +3,7 @@ import { request } from './api.ts';
 import { friendlyDate, money, monthBounds, today } from './finance.ts';
 
 export type TrailStatus = 'realized' | 'pending' | 'overdue' | 'planned' | 'canceled';
-export type TrailKind = 'income' | 'expense' | 'payment' | 'refund' | 'transfer' | 'obligation' | 'cancellation';
+export type TrailKind = 'income' | 'expense' | 'payment' | 'refund' | 'transfer' | 'obligation' | 'cancellation' | 'loan_disbursement' | 'loan_repayment' | 'loan_receivable';
 export type TrailFilter = 'all' | TrailStatus;
 export interface TrailEvent {
   id: string; date: string; kind: TrailKind; status: TrailStatus;
@@ -38,11 +38,13 @@ export const kindLabel: Record<TrailKind,string> = {
   payment: 'Pagamento confirmado', refund: 'Reembolso recebido',
   transfer: 'Transferência interna', obligation: 'Obrigação registrada',
   cancellation: 'Cancelamento confirmado',
+  loan_disbursement: 'Empréstimo concedido (principal)',
+  loan_repayment: 'Principal devolvido',loan_receivable: 'Valor a receber',
 };
 export function eventValue(event: TrailEvent): string {
   if (event.kind === 'cancellation') return 'Sem débito';
-  const prefix = event.kind === 'income' || event.kind === 'refund' ? '+'
-    : event.kind === 'expense' || event.kind === 'payment' ? '−' : '';
+  const prefix = event.kind === 'income' || event.kind === 'refund' || event.kind === 'loan_repayment' ? '+'
+    : event.kind === 'expense' || event.kind === 'payment' || event.kind === 'loan_disbursement' ? '−' : '';
   return prefix + money(event.amountCents);
 }
 export function alertText(alert: DueAlert): string {

@@ -116,7 +116,7 @@ export function createPdf(report:PdfReport):Uint8Array{
   const meta=[
    {value:'Período: '+report.from+' a '+report.to+'    Referência: '+report.asOf,size:10,bold:true},
    {value:'Escopo: '+report.scope+'    Situação: '+report.status,size:9,bold:false},
-   {value:'Valores realizados e pendências são categorias distintas. Transferências não são renda.',size:9,bold:false},
+   {value:'Valores realizados e pendências são categorias distintas. Transferências e empréstimos de principal não são renda.',size:9,bold:false},
   ];
   let metaY=511;
   for(const item of meta){

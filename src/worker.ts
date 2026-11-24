@@ -96,6 +96,17 @@ for (const path of [
   });
 }
 
+// Owner-scoped G1 loans and principal repayments are real cash asset transfers,
+// but never salaries, ordinary income, or speculative receivables in bank balances.
+for(const path of ['/api/loans','/api/loans/:loanId','/api/loans/:loanId/repayments']){
+  app.all(path,c=>{
+    const auth=createWorkerAuth(c.env);
+    return handleFinancialHttp(c.req.raw,c.env.DB as unknown as FinancialDatabase,
+      async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),
+      configuredOrigin(c.env));
+  });
+}
+
 // Read-only consolidated dashboard: same verified Better Auth session boundary.
 app.all('/api/dashboard', (c) => {
   const auth = createWorkerAuth(c.env);
