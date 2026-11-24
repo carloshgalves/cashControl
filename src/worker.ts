@@ -96,6 +96,16 @@ for (const path of [
   });
 }
 
+// G2: append-only renegotiation, replacement installments and linked cash settlements.
+for(const path of ['/api/renegotiations','/api/renegotiations/:agreementId','/api/renegotiations/:agreementId/payments']){
+  app.all(path,c=>{
+    const auth=createWorkerAuth(c.env);
+    return handleFinancialHttp(c.req.raw,c.env.DB as unknown as FinancialDatabase,
+      async headers=>auth.api.getSession({headers,query:{disableCookieCache:true}}),
+      configuredOrigin(c.env));
+  });
+}
+
 // Owner-scoped G1 loans and principal repayments are real cash asset transfers,
 // but never salaries, ordinary income, or speculative receivables in bank balances.
 for(const path of ['/api/loans','/api/loans/:loanId','/api/loans/:loanId/repayments']){

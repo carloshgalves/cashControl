@@ -134,7 +134,7 @@ const EVENT_SQL = [
   " SELECT 'movement:' || m.movement_id AS event_id,",
   ' m.occurred_on AS event_date,',
   " CASE WHEN r.refund_id IS NOT NULL THEN 'refund'",
-  "      WHEN p.payment_id IS NOT NULL OR cp.payment_id IS NOT NULL THEN 'payment'",
+  "      WHEN p.payment_id IS NOT NULL OR cp.payment_id IS NOT NULL OR rp.payment_id IS NOT NULL THEN 'payment'",
   '      ELSE m.direction END AS event_kind,',
   " 'realized' AS event_status, m.description AS title,",
   ' m.amount_cents AS amount_cents, m.account_id AS account_id,',
@@ -147,6 +147,8 @@ const EVENT_SQL = [
   '   AND p.movement_id = m.movement_id',
   ' LEFT JOIN card_invoice_payments cp ON cp.owner_user_id = m.owner_user_id',
   '   AND cp.movement_id = m.movement_id',
+  ' LEFT JOIN debt_renegotiation_payments rp ON rp.owner_user_id = m.owner_user_id',
+  '   AND rp.movement_id = m.movement_id',
   ' WHERE m.owner_user_id = ?',
   ' UNION ALL',
   " SELECT 'transfer:' || t.transfer_id, t.transferred_on,",
@@ -160,6 +162,7 @@ const EVENT_SQL = [
   ' o.title, o.outstanding_cents, NULL, o.obligation_id, NULL, o.created_at',
   ' FROM financial_obligation_balances o',
   ' WHERE o.owner_user_id = ? AND o.outstanding_cents > 0 AND o.cancellation_id IS NULL',
+  ' AND NOT EXISTS(SELECT 1 FROM debt_renegotiations a WHERE a.owner_user_id=o.owner_user_id AND a.obligation_id=o.obligation_id)',
   ' UNION ALL',
   " SELECT 'card-invoice:' || v.card_id || ':' || v.invoice_cycle, v.due_on,",
   " 'obligation', CASE WHEN v.due_on > ? THEN 'planned' WHEN v.due_on < ? THEN 'overdue' ELSE 'pending' END,",
@@ -168,6 +171,7 @@ const EVENT_SQL = [
   ' FROM credit_invoice_balances v',
   ' JOIN credit_cards c ON c.owner_user_id = v.owner_user_id AND c.card_id = v.card_id',
   ' WHERE v.owner_user_id = ? AND v.outstanding_cents > 0',
+  ' AND NOT EXISTS(SELECT 1 FROM debt_renegotiations a WHERE a.owner_user_id=v.owner_user_id AND a.card_id=v.card_id AND a.invoice_cycle=v.invoice_cycle)',
   ' UNION ALL',
   " SELECT 'cancellation:' || c.cancellation_id, c.canceled_on,",
   " 'cancellation', 'canceled', o.title, 0, NULL, c.obligation_id, NULL, c.created_at",
@@ -176,10 +180,21 @@ const EVENT_SQL = [
   '   AND o.obligation_id = c.obligation_id',
   ' WHERE c.owner_user_id = ?',
   '),',
+  'renegotiation_events(event_id,event_date,event_kind,event_status,title,amount_cents,account_id,obligation_id,related_id,created_at) AS (',
+  " SELECT 'renegotiation:' || i.agreement_id || ':' || i.installment_no, i.due_on,",
+  " 'obligation', CASE WHEN i.due_on > ? THEN 'planned' WHEN i.due_on < ? THEN 'overdue' ELSE 'pending' END,",
+  " 'Acordo: parcela ' || i.installment_no || ' de ' || json_array_length(a.schedule_json),",
+  ' i.outstanding_cents, NULL, NULL, i.agreement_id, a.created_at',
+  ' FROM debt_renegotiation_installment_balances i',
+  ' JOIN debt_renegotiations a ON a.owner_user_id=i.owner_user_id AND a.agreement_id=i.agreement_id',
+  ' WHERE i.owner_user_id=? AND i.outstanding_cents>0',
+  '),',
   'all_events AS (',
   ' SELECT event_id,event_date,event_kind,event_status,title,amount_cents,account_id,obligation_id,related_id,created_at FROM account_events',
   ' UNION ALL',
   ' SELECT event_id,event_date,event_kind,event_status,title,amount_cents,account_id,obligation_id,related_id,created_at FROM loan_events',
+  ' UNION ALL',
+  ' SELECT event_id,event_date,event_kind,event_status,title,amount_cents,account_id,obligation_id,related_id,created_at FROM renegotiation_events',
   ')',
   'SELECT event_id, event_date, event_kind, event_status, title, amount_cents,',
   ' account_id, obligation_id, related_id',
@@ -197,7 +212,7 @@ export async function listTimeline(db: FinancialDatabase, actor: AuthenticatedAc
   options: TimelineOptions): Promise<TimelinePage> {
   const who = owner(actor), { status, limit, offset } = checkOptions(options);
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, options.asOf, who, who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
+    who, who, options.asOf, options.asOf, who, who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who, options.asOf, options.asOf, who,
     options.from, options.to, status, status, null, null, null, limit + 1, offset,
   ).all<EventRow>();
   const events = rows.results.slice(0, limit).map((r): TimelineEvent => {
@@ -230,36 +245,30 @@ export async function listDueAlerts(db: FinancialDatabase, actor: AuthenticatedA
   const limit = options.limit ?? 20, offset = options.offset ?? 0;
   page(limit, offset);
   const rows = await db.prepare([
-    // Union obligations and unsettled card invoices without a join fan-out.
-    // All subjects are filtered by the verified owner before pagination.
-    'WITH due_items AS (',
-    " SELECT 'obligation:' || obligation_id AS obligation_id,",
-    ' title, due_on, outstanding_cents, NULL AS card_id, NULL AS invoice_cycle',
-    ' FROM financial_obligation_balances',
-    ' WHERE owner_user_id = ? AND cancellation_id IS NULL AND outstanding_cents > 0',
-    " AND due_on <= date(?, '+10 days')",
-    ' UNION ALL',
-    " SELECT 'card-invoice:' || v.card_id || ':' || v.invoice_cycle,",
-    " 'Fatura: ' || c.display_name || ' (' || v.invoice_cycle || ')',",
-    ' v.due_on, v.outstanding_cents, v.card_id, v.invoice_cycle',
-    ' FROM credit_invoice_balances v',
-    ' JOIN credit_cards c ON c.owner_user_id=v.owner_user_id AND c.card_id=v.card_id',
-    ' WHERE v.owner_user_id = ? AND v.outstanding_cents > 0',
-    " AND v.due_on <= date(?, '+10 days')",
-    ')',
-    'SELECT obligation_id,title,due_on,outstanding_cents,card_id,invoice_cycle FROM due_items',
-    'ORDER BY CASE WHEN due_on < ? THEN 1 ELSE 0 END ASC,',
-    ' CASE WHEN due_on >= ? THEN due_on END ASC,',
-    ' CASE WHEN due_on < ? THEN due_on END DESC, obligation_id ASC',
-    'LIMIT ? OFFSET ?',
-  ].join(' ')).bind(who,options.asOf,who,options.asOf,
-    options.asOf,options.asOf,options.asOf,
+    'SELECT d.due_id AS obligation_id,',
+    " CASE WHEN o.obligation_id IS NOT NULL THEN o.title",
+    " WHEN v.card_id IS NOT NULL THEN 'Fatura: ' || c.display_name || ' (' || v.invoice_cycle || ')'",
+    " ELSE 'Acordo: parcela ' || r.installment_no END AS title,",
+    ' d.due_on,d.outstanding_cents,v.card_id,v.invoice_cycle',
+    ' FROM financial_active_due_items d',
+    " LEFT JOIN financial_obligations o ON o.owner_user_id=d.owner_user_id AND d.due_id='obligation:'||o.obligation_id",
+    ' LEFT JOIN credit_invoice_balances v ON v.owner_user_id=d.owner_user_id',
+    "   AND d.due_id='card-invoice:'||v.card_id||':'||v.invoice_cycle",
+    ' LEFT JOIN credit_cards c ON c.owner_user_id=v.owner_user_id AND c.card_id=v.card_id',
+    ' LEFT JOIN debt_renegotiation_installment_balances r ON r.owner_user_id=d.owner_user_id',
+    "   AND d.due_id='renegotiation:'||r.agreement_id||':'||r.installment_no",
+    " WHERE d.owner_user_id=? AND d.due_on<=date(?,'+10 days')",
+    ' ORDER BY CASE WHEN d.due_on < ? THEN 1 ELSE 0 END ASC,',
+    ' CASE WHEN d.due_on >= ? THEN d.due_on END ASC,',
+    ' CASE WHEN d.due_on < ? THEN d.due_on END DESC,d.due_id ASC',
+    ' LIMIT ? OFFSET ?',
+  ].join(' ')).bind(who,options.asOf,options.asOf,options.asOf,options.asOf,
     limit+1,offset).all<AlertRow>();
   const alerts = rows.results.slice(0, limit).map((row): DueAlert => {
     assertCents(row.outstanding_cents);
     const daysUntil = daysBetween(options.asOf, row.due_on);
     return {
-      obligationId: row.card_id ? row.obligation_id : row.obligation_id.slice('obligation:'.length),
+      obligationId: row.obligation_id.startsWith('obligation:') ? row.obligation_id.slice('obligation:'.length) : row.obligation_id,
       title: row.title,
       dueOn: row.due_on, outstandingCents: row.outstanding_cents,
       daysUntil, level: daysUntil < 0 ? 'overdue' : daysUntil <= 5 ? 'D-5' : 'D-10',
@@ -292,7 +301,7 @@ export async function readExportTimeline(
     throw new TypeError('Invalid account id');
   }
   const rows = await db.prepare(EVENT_SQL).bind(
-    who, who, options.asOf, options.asOf, who, who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who,
+    who, who, options.asOf, options.asOf, who, who, who, options.asOf, options.asOf, who, options.asOf, options.asOf, who, who, options.asOf, options.asOf, who,
     options.from, options.to, status, status, account, account, account,
     maxEvents + 1, 0,
   ).all<EventRow>();

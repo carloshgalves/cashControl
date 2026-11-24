@@ -70,7 +70,7 @@ export async function linkWorkMovement(db:FinancialDatabase,a:AuthenticatedActor
  try{await db.prepare('INSERT INTO work_movement_links(owner_user_id,work_id,movement_id,creation_key,created_at) VALUES(?,?,?,?,?)').bind(who,wid,mid,k,clock().toISOString()).run();}
  catch(e){if(!await replay()){
   // Distinguish deliberate linkage rejection from unexpected storage failure.
-  if(e instanceof Error&&/WORK_LINK_INVALID|WORK_LINK_ALREADY_USED|WORK_TOTAL_TOO_LARGE|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
+  if(e instanceof Error&&/WORK_LINK_INVALID|WORK_LINK_ALREADY_USED|RENEGOTIATION_PAYMENT_NOT_WORK_COST|WORK_TOTAL_TOO_LARGE|UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/.test(e.message))throw new WorkConflict();
   throw e;
  }}
  return getWork(db,a,wid);
@@ -89,7 +89,7 @@ export async function getWorkMovements(db:FinancialDatabase,a:AuthenticatedActor
 export async function availableWorkMovements(db:FinancialDatabase,a:AuthenticatedActor,limit=50,offset=0){
  const who=owner(a);paging(limit,offset);
  const rows=await db.prepare(
-  'SELECT m.movement_id,m.direction,m.description,m.amount_cents,m.occurred_on,COALESCE((SELECT SUM(r.amount_cents) FROM cash_refunds r WHERE r.owner_user_id=m.owner_user_id AND r.original_movement_id=m.movement_id),0) AS refunded_cents FROM posted_cash_movements m WHERE m.owner_user_id=? AND NOT EXISTS(SELECT 1 FROM work_movement_links l WHERE l.owner_user_id=m.owner_user_id AND l.movement_id=m.movement_id) AND NOT EXISTS(SELECT 1 FROM cash_refunds r WHERE r.owner_user_id=m.owner_user_id AND r.refund_movement_id=m.movement_id) AND NOT EXISTS(SELECT 1 FROM card_invoice_payments p WHERE p.owner_user_id=m.owner_user_id AND p.movement_id=m.movement_id) ORDER BY m.occurred_on DESC,m.movement_id DESC LIMIT ? OFFSET ?'
+  'SELECT m.movement_id,m.direction,m.description,m.amount_cents,m.occurred_on,COALESCE((SELECT SUM(r.amount_cents) FROM cash_refunds r WHERE r.owner_user_id=m.owner_user_id AND r.original_movement_id=m.movement_id),0) AS refunded_cents FROM posted_cash_movements m WHERE m.owner_user_id=? AND NOT EXISTS(SELECT 1 FROM work_movement_links l WHERE l.owner_user_id=m.owner_user_id AND l.movement_id=m.movement_id) AND NOT EXISTS(SELECT 1 FROM cash_refunds r WHERE r.owner_user_id=m.owner_user_id AND r.refund_movement_id=m.movement_id) AND NOT EXISTS(SELECT 1 FROM card_invoice_payments p WHERE p.owner_user_id=m.owner_user_id AND p.movement_id=m.movement_id) AND NOT EXISTS(SELECT 1 FROM debt_renegotiation_payments rp WHERE rp.owner_user_id=m.owner_user_id AND rp.movement_id=m.movement_id) ORDER BY m.occurred_on DESC,m.movement_id DESC LIMIT ? OFFSET ?'
  ).bind(who,limit,offset).all<LinkRow>();
  return rows.results.map(r=>({movementId:r.movement_id,direction:r.direction,description:r.description,amountCents:r.amount_cents,occurredOn:r.occurred_on,refundedCents:r.refunded_cents}));
 }

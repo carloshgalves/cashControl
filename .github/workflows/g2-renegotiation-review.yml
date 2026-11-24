@@ -1,0 +1,56 @@
+name: G2 debt renegotiation local adversarial review
+on:
+  push:
+    branches: [feat/g2-debt-renegotiation]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: g2-debt-renegotiation-review
+  cancel-in-progress: true
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Static, build and all regression tests
+        run: |
+          npm run typecheck
+          npm run ui:check
+          npm run ui:build
+          npm test
+          npm run ui:test
+      - name: Disposable local D1 and browser
+        shell: bash
+        run: |
+          cp wrangler.toml.example wrangler.toml
+          sed -i 's/REPLACE_WITH_REAL_D1_ID/00000000-0000-0000-0000-000000000001/' wrangler.toml
+          echo 'BETTER_AUTH_URL=http://127.0.0.1:8787' > .dev.vars
+          echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .dev.vars
+          echo 'ALLOW_SIGN_UP=true' >> .dev.vars
+          npx wrangler d1 migrations apply DB --local --config wrangler.toml
+          npx playwright install --only-shell chromium
+          npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.toml >/tmp/g2-worker.log 2>&1 &
+          echo $! >/tmp/g2-worker.pid
+          npm run ui:preview >/tmp/g2-web.log 2>&1 &
+          echo $! >/tmp/g2-web.pid
+      - name: G2 authenticated D1/Chromium
+        run: node web/tests/renegotiations-browser-e2e.mjs
+      - name: Cleanup
+        if: always()
+        shell: bash
+        run: |
+          for f in /tmp/g2-worker.pid /tmp/g2-web.pid; do
+            if [ -f "$f" ]; then kill "$(cat "$f")" 2>/dev/null || true; fi
+          done
+          rm -f .dev.vars
+      - name: No production deployment
+        if: always()
+        run: echo 'NO_REMOTE_D1 NO_DEPLOY NO_REAL_USER_DATA'

@@ -1,4 +1,5 @@
 import {estimatePotential,PotentialNotApplicable,PotentialTooLarge} from '../planning/historical-potential.ts';
+import {createRenegotiation,getRenegotiation,listRenegotiations,payRenegotiation,listRenegotiationPayments,DebtRenegotiationUnavailable,DebtRenegotiationConflict,DebtRenegotiationTooLarge,type DebtSubject} from '../renegotiations/renegotiations.ts';
 import {grantLoan,getLoan,listLoans,receiveLoanRepayment,listLoanRepayments,LoanConflict,LoanUnavailable} from '../loans/loans.ts';
 import {simulatePlanning,SimulationConflict,SimulationTooLarge} from '../planning/scenarios.ts';
 import {createIntention,getIntention,listIntentions,listIntentionEvents,transitionIntention,getPlanningSummary,IntentionUnavailable,IntentionConflict,PlanningTooLarge} from '../planning/intentions.ts';
@@ -276,6 +277,61 @@ export async function handleFinancialHttp(
 
     // F2 read-only scenario: POST carries hypothetical parameters but never
     // writes, confirms purchases, changes reserves, or posts cash.
+    // G2: append-only replacement schedule, requires exact user-supplied
+    // original outstanding and real, manually provided charges.
+    if(path==='/api/renegotiations'||/^\/api\/renegotiations\/[0-9a-f-]{36}(?:\/payments)?$/.test(path)){
+      const matched=path.match(/^\/api\/renegotiations\/([0-9a-f-]{36})(\/payments)?$/);
+      const agreementId=matched?.[1],payments=Boolean(matched?.[2]);
+      if(method==='GET'){
+        const q=requestURL.searchParams,allowed=new Set(agreementId&&!payments?[]:['limit','offset']);
+        let bad=false;q.forEach((_v,k)=>{if(!allowed.has(k)||q.getAll(k).length!==1)bad=true;});
+        if(bad)return error(400,'INVALID_FILTER');
+        const pag=(k:string,def:number)=>{const v=q.get(k);if(v===null)return def;if(!/^(?:0|[1-9]\d{0,6})$/.test(v))throw new TypeError('Invalid page');return Number(v);};
+        if(!agreementId)return json({renegotiations:await listRenegotiations(database,actor,pag('limit',50),pag('offset',0))});
+        if(!payments){const result=await getRenegotiation(database,actor,agreementId);return result?json({renegotiation:result}):error(404,'NOT_FOUND');}
+        return json({payments:await listRenegotiationPayments(database,actor,agreementId,pag('limit',50),pag('offset',0))});
+      }
+      if(method!=='POST'||(agreementId&&!payments)||requestURL.search)return error(405,'METHOD_NOT_ALLOWED');
+      if(!request.body)return error(400,'INVALID_BODY');
+      const bytes=await readBounded(request,8192);
+      if(bytes===null)return error(413,'PAYLOAD_TOO_LARGE');
+      let raw:unknown;try{raw=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}
+      catch{return error(400,'INVALID_JSON');}
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))return error(400,'INVALID_BODY');
+      const v=raw as Record<string,unknown>;
+      if(typeof v.idempotencyKey!=='string')return error(400,'INVALID_BODY');
+      if(payments){
+        if(Object.keys(v).some(k=>!['idempotencyKey','installmentNo','accountId','amount','method','paidOn'].includes(k))||
+         !Number.isInteger(v.installmentNo)||typeof v.accountId!=='string'||
+         typeof v.amount!=='string'||typeof v.paidOn!=='string'||typeof v.method!=='string')
+         return error(400,'INVALID_BODY');
+        const payment=await payRenegotiation(database,actor,{
+         idempotencyKey:v.idempotencyKey,agreementId:agreementId!,installmentNo:v.installmentNo as number,
+         accountId:v.accountId,amountCents:parseCents(v.amount),
+         method:v.method as 'cash'|'pix'|'debit'|'bank_transfer',paidOn:v.paidOn,
+        });return json({payment},201);
+      }
+      if(Object.keys(v).some(k=>!['idempotencyKey','subject','expectedOutstanding','fees','agreedOn','installments','reason'].includes(k))||
+       !v.subject||typeof v.subject!=='object'||Array.isArray(v.subject)||
+       typeof v.expectedOutstanding!=='string'||typeof v.fees!=='string'||
+       typeof v.agreedOn!=='string'||!Array.isArray(v.installments)||
+       (v.reason!==undefined&&v.reason!==null&&typeof v.reason!=='string'))return error(400,'INVALID_BODY');
+      const installments:( {dueOn:string;amountCents:number} )[]=[];
+      if(v.installments.length<1||v.installments.length>24)return error(400,'INVALID_BODY');
+      for(const item of v.installments){
+       if(!item||typeof item!=='object'||Array.isArray(item))return error(400,'INVALID_BODY');
+       const entry=item as Record<string,unknown>;
+       if(Object.keys(entry).some(k=>!['dueOn','amount'].includes(k))||typeof entry.dueOn!=='string'||typeof entry.amount!=='string')
+         return error(400,'INVALID_BODY');
+       installments.push({dueOn:entry.dueOn,amountCents:parseCents(entry.amount)});
+      }
+      const agreement=await createRenegotiation(database,actor,{
+       idempotencyKey:v.idempotencyKey,subject:v.subject as DebtSubject,
+       expectedOutstandingCents:parseCents(v.expectedOutstanding),
+       feesCents:parseCents(v.fees),agreedOn:v.agreedOn,installments,
+       reason:v.reason as string|null|undefined,
+      });return json({renegotiation:agreement},201);
+    }
     // G1 loan/receivable API: loan principal is NOT earned income.
     if(path==='/api/loans'||/^\/api\/loans\/[0-9a-f-]{36}(?:\/repayments)?$/.test(path)){
       const loanMatch=path.match(/^\/api\/loans\/([0-9a-f-]{36})(\/repayments)?$/);
@@ -986,6 +1042,9 @@ export async function handleFinancialHttp(
     return error(404, 'NOT_FOUND');
   } catch (cause) {
     // Do not disclose SQL errors, unique keys, customer names or IDs to clients.
+    if(cause instanceof DebtRenegotiationUnavailable)return error(404,'NOT_FOUND');
+    if(cause instanceof DebtRenegotiationConflict)return error(409,'CONFLICT');
+    if(cause instanceof DebtRenegotiationTooLarge)return error(413,'RESULT_TOO_LARGE');
     if(cause instanceof LoanUnavailable)return error(404,'NOT_FOUND');
     if(cause instanceof LoanConflict)return error(409,'CONFLICT');
     if(cause instanceof PotentialNotApplicable)return error(404,'NOT_APPLICABLE');
