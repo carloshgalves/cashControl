@@ -1,6 +1,6 @@
 # F2 / SPEC-006 — Parecer adversarial de cenários e simulação financeira
 
-**Issue:** [#27](https://github.com/carloshgalves/cashControl/issues/27). **Épico:** #6. **Base:** `main` após PR #48 (F1). **Branch:** `feat/f2-scenario-simulation`. **Gate:** PR Draft, sem merge/deploy ou migração remota.
+**Issue:** [#27](https://github.com/carloshgalves/cashControl/issues/27). **Épico:** #6. **Base:** `main` após PR #48 (F1). **Branch:** `feat/f2-scenario-simulation`. **Gate:** PR #49 mesclada por merge commit `b64d9b66` em 23/11/2026; sem deploy ou migração remota.
 
 ## Contrato e semântica de risco
 
@@ -41,4 +41,4 @@ Chromium/D1 descartável: duas sessões Better Auth, conta, obrigação, expecta
 
 **Não homologado:** comportamento sob carga/latência Cloudflare de produção, reconciliação de depósitos reais não vinculados automaticamente, ordem intradiária, horizonte superior a 367 dias, cálculo tributário, financiamento/juros automáticos, saldo histórico, estimativa de renda variável potencial e outros cenários não descritos. Uma leitura pode ficar desatualizada após novas movimentações: o usuário deve recalcular a simulação.
 
-**Parecer de escopo:** após as correções e revalidação, não foram identificados findings acionáveis remanescentes nos caminhos verificados. Este parecer não certifica ausência universal de bugs nem substitui revisão humana/aceite visual. Merge permanece manual; Issue #27 aberta até integração em `main`.
+**Parecer de escopo:** após as correções e revalidação, não foram identificados findings acionáveis remanescentes nos caminhos verificados. Este parecer não certifica ausência universal de bugs nem substitui revisão humana/aceite visual. Merge manual realizado no commit `b64d9b66`; Issue #27 encerrada após integração em `main`. A inspeção visual foi estática (JSX/CSS) e apoiada em Chromium desktop/mobile, sem captura pixel a pixel publicada pelo CI.
