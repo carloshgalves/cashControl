@@ -8,11 +8,11 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: c3-financial-export-local
+  group: c3-financial-export-local-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
