@@ -6,7 +6,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: g2-debt-renegotiation-review
+  group: g2-debt-renegotiation-review-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   review:
